@@ -11,6 +11,6 @@ data/
 
 # Virtual environments
 .venv
-
+.idea
 
 .env
