@@ -14,8 +14,7 @@
 | **Local LLM** | **Qwen2.5-7B-Instruct** | 로컬 요약, 퀴즈 생성, 쉬운 설명, 질의응답용 기본 모델 |
 | **LLM 확장 후보** | **Qwen2.5-14B-Instruct** | 요약 품질과 맥락 유지가 더 필요할 때 업그레이드 |
 | **API 대안** | **GPT-5.4-mini** | 더 빠른 프로토타이핑과 품질 확보가 필요할 때 사용 |
-| **Local TTS** | **MeloTTS** | 한국어 낭독 중심 MVP에 적합한 다국어 TTS |
-| **TTS 고도화 후보** | **XTTS v2** | 음성 품질 고도화 및 화자 커스터마이징 확장용 |
+| **Local TTS** | **XTTS v2** (`coqui-tts`) | 로컬 한국어 TTS. MeloTTS는 `transformers==4.27.4` 고정으로 버전 충돌 문제로 제외 |
 | **Environment** | **uv** + **Python** | 가상환경 및 패키지 관리 |
 
 ---
@@ -40,7 +39,7 @@
 - [ ] **확장 방향:** 품질이 아쉬우면 `Qwen2.5-14B-Instruct`로 상향하거나, API 기반 `GPT-5.4-mini`로 전환
 
 ### Step 4: 음성 변환 (Local TTS)
-- [ ] **오디오 생성:** `MeloTTS`를 사용하여 생성된 요약문을 한국어 음성 파일(.wav/.mp3)로 합성
+- [ ] **오디오 생성:** `XTTS v2`를 사용하여 생성된 요약문을 한국어 음성 파일(.wav/.mp3)로 합성
 - [ ] **버퍼링:** 생성된 파일을 Streamlit 오디오 플레이어에 바인딩
 
 ### Step 5: 학습 UI 출력 (Display)
@@ -69,4 +68,4 @@
 | **OCR 보조** | TrOCR | — | — |
 | **LLM** | Qwen2.5-7B-Instruct | GPT-5.4-mini | — |
 | **LLM 확장** | Qwen2.5-14B-Instruct | — | — |
-| **TTS** | MeloTTS | ElevenLabs Eleven Multilingual v2 | 무료 월 10,000 크레딧. 다국어 감정 표현력 최우수. API KEY로 즉시 시현 가능 → 데모/발표 시 유리 |
+| **TTS** | XTTS v2 (`coqui-tts`) | ElevenLabs Eleven Multilingual v2 | MeloTTS 버전 충돌로 제외. 무료 월 10,000 크레딧. API KEY로 즉시 시현 가능 → 데모/발표 시 유리 |
