@@ -2,7 +2,7 @@
 
 ## 프로젝트 개요
 
-실물 종이책을 촬영하여 **OCR → LLM 분석 → TTS 낭독**까지 제공하는 Streamlit 기반 학습 보조 도구.
+이미지 문서, PDF, 녹음 파일을 입력받아 내용을 추출하고, **요약·정리·질의응답·음성 읽어주기**를 제공하는 Streamlit 기반 학습 보조 도구.
 
 - **문서:** [Notion](https://www.notion.so/ReadMate-3338f00bb4b980f1bdc2ced2825ed8f1) | [Google Docs](https://docs.google.com/document/d/13evEuSCxKVuTBAD8XnT6HVEnLOuqBFVUP8qvo9BUcfE/edit)
 - **설계 문서:** `Plan-TechStack.md`, `Plan-Pipeline.md`
@@ -37,7 +37,8 @@
 |------|-----------|----------------------|
 | **UI** | Streamlit | — |
 | **OCR** | PaddleOCR | HDX-005 (네이버 클로바) |
-| **OCR 보조** | TrOCR | — |
+| **PDF 추출** | pypdf (텍스트형) + PaddleOCR (스캔형) | — |
+| **STT** | faster-whisper | — |
 | **LLM** | Qwen2.5-7B-Instruct | GPT-5.4-mini |
 | **LLM 확장** | Qwen2.5-14B-Instruct | — |
 | **TTS** | XTTS v2 (`coqui-tts`) | ElevenLabs Eleven Multilingual v2 |
@@ -47,14 +48,17 @@
 ### 제외된 모델
 
 - **MeloTTS:** `transformers==4.27.4` 고정으로 `transformers>=5.3.0`과 버전 충돌 → 제외
+- **TrOCR:** 최신 기획에서 제외, PaddleOCR 단독 사용
 
 ---
 
 ## 파이프라인 구조
 
 ```
-입력 (카메라/파일) → 전처리 (OpenCV) → OCR (PaddleOCR)
-→ LLM 분석 (Qwen2.5) → TTS (XTTS v2) → UI 출력 (Streamlit)
+[문서 이미지]  → 이미지 업로드 → OCR (PaddleOCR) → 텍스트 정리 → TTS
+[PDF]         → PDF 업로드   → 텍스트 추출(pypdf) 또는 OCR → 요약/정리 → TTS
+[오디오]       → 파일 업로드  → STT (faster-whisper) → 요약/정리 → TTS
+[질의응답]     → 질문 입력    → LLM (Qwen2.5) → 자료 기반 답변 → TTS
 ```
 
 ### 모듈 역할 (`src/`)
@@ -62,30 +66,29 @@
 | 파일 | 역할 |
 |------|------|
 | `app.py` | Streamlit 진입점 |
-| `src/input.py` | 입력 수신 및 이미지/PDF 분기 |
+| `src/input.py` | 입력 수신 및 이미지/PDF/오디오 분기 |
 | `src/preprocess.py` | OpenCV 전처리 (기울기 보정, 노이즈 제거) |
-| `src/ocr.py` | PaddleOCR + TrOCR 보조, 텍스트 병합 |
-| `src/llm.py` | Qwen2.5 추론, JSON 출력 (요약/퀴즈/키워드) |
-| `src/tts.py` | XTTS v2 음성 합성, .wav 출력 |
+| `src/ocr.py` | PaddleOCR 텍스트 인식, 스캔형 PDF OCR |
+| `src/pdf.py` | pypdf 텍스트 추출, 스캔형 판별 후 OCR 분기 |
+| `src/stt.py` | faster-whisper 음성→텍스트 변환 |
+| `src/llm.py` | Qwen2.5 추론, 요약/정리/질의응답 |
+| `src/tts.py` | XTTS v2 음성 합성, 프리셋 목소리 선택 |
 | `src/ui.py` | Streamlit UI 컴포넌트 |
 
 ---
 
 ## 코드 작성 규칙
 
-- 모델 로드 시 CUDA → MPS → CPU 순으로 폴백
+- 디바이스 감지는 **직접 작성 금지**, 반드시 `src/lib/utils/device.py`의 `available_device()` 사용
   ```python
-  if torch.cuda.is_available():
-      device = "cuda"
-  elif torch.backends.mps.is_available():
-      device = "mps"
-  else:
-      device = "cpu"
+  from src.lib.utils.device import available_device
+  device = available_device()
   ```
 - 모델 dtype은 항상 `torch.bfloat16` (CUDA/MPS 공통, CPU는 float32 자동 폴백)
 - LLM 출력은 JSON 포맷으로 강제 (재시도 최대 3회)
 - API 키는 `.env`에서 `python-dotenv`로 관리
 - OCR 입력 타입 분기: 이미지 → PaddleOCR `/general` / PDF → `/document`
+- PDF 분기: 텍스트 추출 가능 → pypdf / 스캔형 → PaddleOCR
 - 린터: `ruff` (설정은 `pyproject.toml` 참고)
 
 ---
@@ -123,7 +126,10 @@
 ## MVP 체크리스트
 
 - [ ] 환경 구축 및 Qwen2.5-7B 실행 확인
-- [ ] PaddleOCR 책 페이지 인식 테스트
-- [ ] LLM 프롬프트 튜닝 (JSON 포맷 출력)
+- [ ] PaddleOCR 문서 이미지 인식 테스트
+- [ ] PDF 텍스트 추출 및 요약 (pypdf + OCR 분기)
+- [ ] faster-whisper STT 오디오 변환 테스트
+- [ ] LLM 프롬프트 튜닝 (요약/정리/질의응답 JSON 출력)
+- [ ] XTTS v2 프리셋 목소리 선택 기능
 - [ ] Streamlit 전체 파이프라인 연결
 - [ ] 로컬 리소스 최적화
