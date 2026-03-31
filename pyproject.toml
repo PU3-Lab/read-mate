@@ -29,6 +29,7 @@ dependencies = [
     "fastapi>=0.133.0",
     "uvicorn>=0.41.0",
     "python-multipart>=0.0.22",    # 파일 업로드
+    "jupyter>=1.1.1",
 ]
 
 [[tool.uv.index]]
