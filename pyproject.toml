@@ -4,4 +4,81 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "streamlit>=1.55.0",           # 웹 UI 프레임워크
+    "paddlepaddle>=2.6.0",         # PaddleOCR 의존 프레임워크
+    "paddleocr>=2.7.0",            # 메인 OCR 엔진
+    "opencv-python>=4.13.0.92",    # 이미지 전처리 (회전 보정, 노이즈 제거)
+    "pillow>=10.0.0",              # 이미지 파일 입출력
+    "transformers[torch]>=5.3.0",  # Qwen2.5 / TrOCR 로드
+    "accelerate>=0.30.0",          # 모델 로딩 최적화 (MPS 포함)
+    "sentencepiece>=0.2.0",        # Qwen2.5 토크나이저
+    "huggingface-hub>=1.7.1",      # 모델 다운로드 관리
+    "torch>=2.10.0",
+    "torchvision>=0.25.0",
+    "torchaudio>=2.10.0",
+    "coqui-tts>=0.25.0",           # 메인 로컬 TTS 엔진 (XTTS v2)
+    "soundfile>=0.12.0",           # 오디오 파일 I/O (.wav/.mp3)
+    "openai>=2.29.0",              # GPT-5.4-mini (LLM 폴백)
+    "requests>=2.32.0",            # Naver HyperCLOVA OCR API (HDX-005 폴백)
+    "numpy>=2.4.2",
+    "pandas<3",
+    "python-dotenv>=1.2.1",        # API 키 환경변수 관리
+    "tqdm>=4.67.3",
+    "pyprojroot>=0.3.0",           # 프로젝트 루트 경로 관리
+    "fastapi>=0.133.0",
+    "uvicorn>=0.41.0",
+    "python-multipart>=0.0.22",    # 파일 업로드
+]
+
+[[tool.uv.index]]
+name = "pytorch-gpu"
+url = "https://download.pytorch.org/whl/cu126" # 본인의 CUDA 버전에 맞춤
+explicit = true
+
+[tool.uv.sources]
+torch = [
+  { index = "pytorch-gpu", marker = "sys_platform == 'win32'" },
+  { index = "pytorch-gpu", marker = "sys_platform == 'linux'" },
+]
+torchvision = [
+  { index = "pytorch-gpu", marker = "sys_platform == 'win32'" },
+  { index = "pytorch-gpu", marker = "sys_platform == 'linux'" },
+]
+torchaudio = [
+  { index = "pytorch-gpu", marker = "sys_platform == 'win32'" },
+  { index = "pytorch-gpu", marker = "sys_platform == 'linux'" },
+]
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+fix = true
+
+[tool.ruff.lint]
+select = [ 
+    "E",   
+    "F",   
+    "I",   
+    "B",   
+    "C4",  
+    "UP",  
+    "N",   
+    "SIM", 
+]
+ignore = [
+    "E501",
+    "N803",
+    'N812',
+    'E401',
+    'N806',
+    'N816',
+]
+
+[tool.ruff.format]
+quote-style = "single"
+indent-style = "space"
+line-ending = "auto"
+
+[tool.ruff.lint.per-file-ignores]
+"*.py" = ["ANN", "INP001"]
