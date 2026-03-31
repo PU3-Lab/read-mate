@@ -20,4 +20,5 @@ uv venv
 ## 패키지 설치
 ```
 uv sync
+uv pip install -e . # 내부 패키지 사용시 필요
 ```
