@@ -11,16 +11,23 @@
 
 ## 환경
 
-- **OS:** Mac Apple Silicon (MPS 백엔드)
+- **OS:** Mac Apple Silicon / Windows / Linux
 - **패키지 관리:** `uv`
 - **Python:** 3.11+
 - **가상환경:** `uv sync`으로 설치
 
+| OS | 백엔드 | torch 인덱스 |
+|----|--------|-------------|
+| Mac Apple Silicon | MPS | PyPI 기본값 |
+| Windows | CUDA (cu126) | pytorch-gpu |
+| Linux | CUDA (cu126) | pytorch-gpu |
+
 ### ⚠️ 필수 규칙
 
-- MPS에서 fp16 NaN 오버플로 발생 → **bf16 필수**
-- CUDA 전용 툴 사용 불가 (Trellis 등)
-- torch/torchvision/torchaudio는 Mac에서 PyPI 기본값 사용 (pytorch-gpu 인덱스는 Win/Linux 전용)
+- **Mac MPS:** fp16 NaN 오버플로 발생 → **bf16 필수**
+- **Windows/Linux CUDA:** fp16 사용 가능, bf16 권장 (일관성)
+- torch/torchvision/torchaudio는 Mac에서 PyPI 기본값, Win/Linux는 pytorch-gpu 인덱스 사용
+- CUDA 전용 툴 (Trellis 등)은 Mac에서 사용 불가
 
 ---
 
@@ -66,11 +73,16 @@
 
 ## 코드 작성 규칙
 
-- 모델 로드 시 항상 MPS 우선, CPU 폴백
+- 모델 로드 시 CUDA → MPS → CPU 순으로 폴백
   ```python
-  device = "mps" if torch.backends.mps.is_available() else "cpu"
+  if torch.cuda.is_available():
+      device = "cuda"
+  elif torch.backends.mps.is_available():
+      device = "mps"
+  else:
+      device = "cpu"
   ```
-- 모델 dtype은 항상 `torch.bfloat16`
+- 모델 dtype은 항상 `torch.bfloat16` (CUDA/MPS 공통, CPU는 float32 자동 폴백)
 - LLM 출력은 JSON 포맷으로 강제 (재시도 최대 3회)
 - API 키는 `.env`에서 `python-dotenv`로 관리
 - OCR 입력 타입 분기: 이미지 → PaddleOCR `/general` / PDF → `/document`
@@ -94,11 +106,12 @@
 
 ### 디버깅
 - 에러 발생 시 원인 분석 → 수정 → 재확인까지 한 번에 처리
-- MPS 관련 에러는 bf16 / CPU 폴백 순서로 확인
+- 디바이스 관련 에러: CUDA → MPS → CPU 폴백 순서로 확인 / bf16 → float32 dtype 폴백
 - 패키지 충돌은 `pyproject.toml` 직접 수정
 
 ### 코드 리뷰
-- 성능, 가독성, MPS 호환성 세 가지 기준으로 검토
+- 성능, 가독성, 크로스플랫폼 호환성 세 가지 기준으로 검토
+- 플랫폼별 체크: Mac(MPS/bf16), Win/Linux(CUDA/bf16), CPU 폴백
 - 문제 발견 시 수정안 바로 제시
 
 ### 질문하는 경우 (예외)
