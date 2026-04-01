@@ -19,7 +19,6 @@ dependencies = [
     "torchaudio>=2.10.0",
     "pypdf>=5.0.0",                  # 텍스트형 PDF 본문 추출
     "pdf2image>=1.17.0",             # 스캔형 PDF 페이지 래스터화 (Poppler 의존)
-    "pyhwp>=0.1b15",                 # HWP 텍스트 추출
     "faster-whisper>=1.0.0",        # 로컬 STT (녹음 파일 → 텍스트)
     "coqui-tts>=0.25.0",           # 메인 로컬 TTS 엔진 (XTTS v2)
     "soundfile>=0.12.0",           # 오디오 파일 I/O (.wav/.mp3)

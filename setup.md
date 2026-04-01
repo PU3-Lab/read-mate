@@ -14,7 +14,7 @@
 ## 파이썬 가상환경 설치
 ```py
 uv venv
-.venv/Script/activate
+.venv/Scripts/activate
 ```
 
 ## 패키지 설치

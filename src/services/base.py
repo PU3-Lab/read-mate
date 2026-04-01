@@ -9,7 +9,6 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 
 from models.schemas import (
-    HWPResult,
     LLMResult,
     OCRResult,
     PDFResult,
@@ -52,25 +51,6 @@ class BasePDF(ABC):
             PDFResult: 추출 텍스트, 페이지 수, 스캔형 여부
         """
         ...
-
-
-class BaseHWP(ABC):
-    """HWP 추출 엔진 인터페이스."""
-
-    @abstractmethod
-    def extract(self, hwp_bytes: bytes) -> HWPResult:
-        """
-        HWP 바이트를 받아 텍스트 추출 결과 반환.
-        pyhwp 우선, 실패 시 LibreOffice 폴백.
-
-        Args:
-            hwp_bytes: HWP 원본 바이트
-
-        Returns:
-            HWPResult: 추출 텍스트, 페이지 수, 이미지형 여부, 추출 방법
-        """
-        ...
-
 
 class BaseSTT(ABC):
     """STT 엔진 인터페이스."""

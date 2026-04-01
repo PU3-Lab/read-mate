@@ -10,7 +10,6 @@ from __future__ import annotations
 import logging
 
 from models.schemas import (
-    HWPResult,
     InputPayload,
     InputType,
     LLMResult,
@@ -21,7 +20,7 @@ from models.schemas import (
     TaskType,
     TTSResult,
 )
-from src.services.base import BaseHWP, BaseLLM, BaseOCR, BasePDF, BaseSTT, BaseTTS
+from src.services.base import BaseLLM, BaseOCR, BasePDF, BaseSTT, BaseTTS
 
 logger = logging.getLogger(__name__)
 
@@ -51,14 +50,12 @@ class ReadingPipeline:
         stt: BaseSTT,
         llm: BaseLLM,
         tts: BaseTTS,
-        hwp: BaseHWP | None = None,
     ) -> None:
         self.ocr = ocr
         self.pdf = pdf
         self.stt = stt
         self.llm = llm
         self.tts = tts
-        self.hwp = hwp
 
     def run(self, payload: InputPayload) -> PipelineResult:
         """
@@ -131,8 +128,6 @@ class ReadingPipeline:
                 return self._run_image(payload.content, warnings)
             case InputType.PDF:
                 return self._run_pdf(payload.content, warnings)
-            case InputType.HWP:
-                return self._run_hwp(payload.content, warnings)
             case InputType.AUDIO:
                 return self._run_audio(payload.content, warnings)
             case InputType.QUESTION:
@@ -166,18 +161,6 @@ class ReadingPipeline:
             warnings.append('스캔형 PDF로 판별되어 OCR로 처리했습니다.')
         logger.info('[pdf] engine=%s pages=%d', engine, result.page_count)
         return result.text, engine, None
-
-    def _run_hwp(
-        self, content: bytes, warnings: list[str]
-    ) -> tuple[str, str | None, str | None]:
-        """HWP → pyhwp 또는 LibreOffice+OCR 분기 경로."""
-        if not self.hwp:
-            raise ValueError('HWP 엔진이 설정되지 않았습니다.')
-        result: HWPResult = self.hwp.extract(content)
-        if result.is_image_based:
-            warnings.append('이미지형 HWP로 판별되어 LibreOffice + OCR로 처리했습니다.')
-        logger.info('[hwp] method=%s pages=%d', result.extraction_method, result.page_count)
-        return result.text, result.extraction_method, None
 
     def _run_audio(
         self, content: bytes, warnings: list[str]
