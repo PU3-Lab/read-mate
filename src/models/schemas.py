@@ -16,6 +16,7 @@ from enum import Enum
 class InputType(Enum):
     IMAGE = 'image'
     PDF = 'pdf'
+    HWP = 'hwp'
     AUDIO = 'audio'
     QUESTION = 'question'
 
@@ -85,6 +86,21 @@ class PDFResult:
     text: str
     page_count: int
     is_scanned: bool  # True면 OCR 경로를 통해 추출된 것
+
+
+# ─────────────────────────────────────────
+# HWP
+# ─────────────────────────────────────────
+
+
+@dataclass
+class HWPResult:
+    """HWP 추출 결과."""
+
+    text: str
+    page_count: int
+    is_image_based: bool  # True면 LibreOffice + OCR 경로로 처리된 것
+    extraction_method: str  # 'pyhwp' | 'libreoffice_pdf' | 'libreoffice_ocr'
 
 
 # ─────────────────────────────────────────
