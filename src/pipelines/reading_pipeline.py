@@ -20,7 +20,7 @@ from models.schemas import (
     TaskType,
     TTSResult,
 )
-from src.services.base import BaseLLM, BaseOCR, BasePDF, BaseSTT, BaseTTS
+from services.base import BaseLLM, BaseOCR, BasePDF, BaseSTT, BaseTTS
 
 logger = logging.getLogger(__name__)
 
