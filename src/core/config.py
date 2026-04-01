@@ -45,7 +45,7 @@ ELEVENLABS_API_KEY: str = os.getenv('ELEVENLABS_API_KEY', '')
 
 LLM_MODEL_DEFAULT: str = 'Qwen/Qwen2.5-7B-Instruct'
 LLM_MODEL_LARGE: str = 'Qwen/Qwen2.5-14B-Instruct'
-LLM_MODEL_API: str = 'gpt-4o-mini'
+LLM_MODEL_API: str = 'gpt-4.1-mini'
 
 STT_MODEL: str = 'large-v3'  # faster-whisper 모델 크기
 

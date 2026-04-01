@@ -1,6 +1,6 @@
 """
-ReadMate용 Qwen 기반 LLM 서비스 구현체.
-요약과 질의응답을 JSON 포맷으로 강제하고, 파싱 실패 시 재시도한다.
+ReadMate용 OpenAI API 기반 LLM 서비스 구현체.
+QwenLLM 폴백 또는 독립 엔진으로 사용한다.
 """
 
 from __future__ import annotations
@@ -10,69 +10,62 @@ import logging
 import re
 from typing import Any
 
-import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from openai import OpenAI
 
-from lib.utils.device import available_device
+from core.config import (
+    LLM_MAX_INPUT_CHARS,
+    LLM_MAX_NEW_TOKENS,
+    LLM_MAX_RETRIES,
+    LLM_MODEL_API,
+    OPENAI_API_KEY,
+)
 from models.schemas import LLMResult, QuizItem, TaskType
-from services.base import BaseLLM
+from services.llm_base import ChunkedLLM
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_MODEL_NAME = 'Qwen/Qwen2.5-7B-Instruct'
-MAX_RETRIES = 3
-MAX_INPUT_CHARS = 12000
-MAX_NEW_TOKENS = 768
 
-
-class QwenLLM(BaseLLM):
-    """Qwen2.5 기반 ReadMate LLM 서비스."""
-
-    _shared_model: AutoModelForCausalLM | None = None
-    _shared_tokenizer: AutoTokenizer | None = None
-    _shared_model_name: str | None = None
+class OpenAILLM(ChunkedLLM):
+    """OpenAI API 기반 ReadMate LLM 서비스."""
 
     def __init__(
         self,
-        model_name: str = DEFAULT_MODEL_NAME,
-        max_input_chars: int = MAX_INPUT_CHARS,
-        max_new_tokens: int = MAX_NEW_TOKENS,
+        model_name: str = LLM_MODEL_API,
+        max_input_chars: int = LLM_MAX_INPUT_CHARS,
+        max_new_tokens: int = LLM_MAX_NEW_TOKENS,
+        api_key: str | None = None,
     ) -> None:
         """
-        Qwen LLM 서비스를 초기화한다.
+        OpenAI LLM 서비스를 초기화한다.
 
         Args:
-            model_name: Hugging Face 모델 이름 또는 로컬 경로
+            model_name: OpenAI 모델 이름 (gpt-4.1-mini 등)
             max_input_chars: 프롬프트에 포함할 최대 본문 길이
             max_new_tokens: 생성 최대 토큰 수
+            api_key: OpenAI API 키 (미입력 시 config의 OPENAI_API_KEY 사용)
         """
         self.model_name = model_name
         self.max_input_chars = max_input_chars
         self.max_new_tokens = max_new_tokens
-        self.device = available_device()
-        self.dtype = self._resolve_dtype(self.device)
-        self.tokenizer, self.model = self._get_or_load_model()
+        self.client = OpenAI(api_key=api_key or OPENAI_API_KEY or None)
 
-    def generate(
-        self, text: str, task: TaskType, question: str | None = None
+    def _generate_single(
+        self, text: str, task: TaskType, question: str | None
     ) -> LLMResult:
         """
-        텍스트와 태스크 타입을 받아 JSON 기반 결과를 생성한다.
+        단일 청크 텍스트에 대해 OpenAI API 추론을 실행한다.
 
         Args:
-            text: 분석 대상 원문
-            task: 요약 또는 질의응답 태스크
-            question: QA 태스크일 때 사용자 질문
+            text: 정리된 본문 (max_input_chars 이하)
+            task: 요청 태스크
+            question: 사용자 질문
 
         Returns:
             LLMResult: 정규화된 LLM 결과
         """
-        normalized_text = self._normalize_text(text)
-        if not normalized_text:
-            return self._build_fallback_result(task, question)
-
+        normalized_text = text[: self.max_input_chars]
         last_error: Exception | None = None
-        for attempt in range(1, MAX_RETRIES + 1):
+        for attempt in range(1, LLM_MAX_RETRIES + 1):
             try:
                 prompt = self._build_prompt(
                     text=normalized_text,
@@ -86,84 +79,14 @@ class QwenLLM(BaseLLM):
             except Exception as exc:
                 last_error = exc
                 logger.warning(
-                    '[llm] parse/inference retry=%s/%s failed: %s',
+                    '[openai-llm] parse/inference retry=%s/%s failed: %s',
                     attempt,
-                    MAX_RETRIES,
+                    LLM_MAX_RETRIES,
                     exc,
                 )
 
-        logger.error('[llm] all retries failed: %s', last_error)
+        logger.error('[openai-llm] all retries failed: %s', last_error)
         return self._build_fallback_result(task, question)
-
-    @classmethod
-    def _resolve_dtype(cls, device: str) -> torch.dtype:
-        """
-        디바이스에 맞는 dtype을 결정한다.
-
-        Args:
-            device: 추론 디바이스 이름
-
-        Returns:
-            torch.dtype: 추론용 dtype
-        """
-        if device == 'cpu':
-            return torch.float32
-        return torch.bfloat16
-
-    def _get_or_load_model(
-        self,
-    ) -> tuple[AutoTokenizer, AutoModelForCausalLM]:
-        """
-        토크나이저와 모델을 싱글톤으로 로드한다.
-
-        Returns:
-            tuple[AutoTokenizer, AutoModelForCausalLM]: 재사용 가능한 모델 객체
-        """
-        if (
-            self.__class__._shared_model is not None
-            and self.__class__._shared_tokenizer is not None
-            and self.__class__._shared_model_name == self.model_name
-        ):
-            return self.__class__._shared_tokenizer, self.__class__._shared_model
-
-        logger.info(
-            '[llm] loading model=%s device=%s dtype=%s',
-            self.model_name,
-            self.device,
-            self.dtype,
-        )
-
-        tokenizer = AutoTokenizer.from_pretrained(
-            self.model_name,
-            trust_remote_code=True,
-        )
-        if tokenizer.pad_token_id is None:
-            tokenizer.pad_token = tokenizer.eos_token
-        model = AutoModelForCausalLM.from_pretrained(
-            self.model_name,
-            torch_dtype=self.dtype,
-            trust_remote_code=True,
-        )
-        model.to(self.device)
-        model.eval()
-
-        self.__class__._shared_tokenizer = tokenizer
-        self.__class__._shared_model = model
-        self.__class__._shared_model_name = self.model_name
-        return tokenizer, model
-
-    def _normalize_text(self, text: str) -> str:
-        """
-        입력 본문을 정리하고 길이를 제한한다.
-
-        Args:
-            text: 원본 텍스트
-
-        Returns:
-            str: 추론에 사용할 정리된 텍스트
-        """
-        compact_text = re.sub(r'\n{3,}', '\n\n', text).strip()
-        return compact_text[: self.max_input_chars]
 
     def _build_prompt(
         self,
@@ -204,12 +127,12 @@ class QwenLLM(BaseLLM):
             )
         )
 
-        retry_instruction = ''
-        if attempt > 1:
-            retry_instruction = (
-                '\n이전 응답은 JSON 파싱에 실패했습니다. '
-                '설명문 없이 JSON 객체 하나만 반환하세요.'
-            )
+        retry_instruction = (
+            '\n이전 응답은 JSON 파싱에 실패했습니다. '
+            '설명문 없이 JSON 객체 하나만 반환하세요.'
+            if attempt > 1
+            else ''
+        )
 
         question_block = f'\n질문: {question}' if question else ''
 
@@ -229,7 +152,7 @@ class QwenLLM(BaseLLM):
 
     def _run_inference(self, prompt: str) -> str:
         """
-        모델 추론을 실행하고 생성 텍스트를 반환한다.
+        OpenAI Chat Completions API를 호출해 생성 텍스트를 반환한다.
 
         Args:
             prompt: 모델 입력 프롬프트
@@ -237,37 +160,20 @@ class QwenLLM(BaseLLM):
         Returns:
             str: 생성된 원문 텍스트
         """
-        messages = [
-            {
-                'role': 'system',
-                'content': '당신은 JSON만 반환하는 정확한 도우미입니다.',
-            },
-            {'role': 'user', 'content': prompt},
-        ]
-        model_input = self.tokenizer.apply_chat_template(
-            messages,
-            tokenize=False,
-            add_generation_prompt=True,
+        response = self.client.chat.completions.create(
+            model=self.model_name,
+            messages=[
+                {
+                    'role': 'system',
+                    'content': '당신은 JSON만 반환하는 정확한 도우미입니다.',
+                },
+                {'role': 'user', 'content': prompt},
+            ],
+            max_tokens=self.max_new_tokens,
+            temperature=0,
+            response_format={'type': 'json_object'},
         )
-        encoded = self.tokenizer(
-            model_input,
-            return_tensors='pt',
-        )
-        encoded = {key: value.to(self.device) for key, value in encoded.items()}
-
-        with torch.inference_mode():
-            output = self.model.generate(
-                **encoded,
-                max_new_tokens=self.max_new_tokens,
-                do_sample=False,
-                temperature=None,
-                top_p=None,
-                pad_token_id=self.tokenizer.eos_token_id,
-                eos_token_id=self.tokenizer.eos_token_id,
-            )
-
-        generated_tokens = output[0][encoded['input_ids'].shape[1] :]
-        return self.tokenizer.decode(generated_tokens, skip_special_tokens=True).strip()
+        return (response.choices[0].message.content or '').strip()
 
     def _parse_json_output(self, raw_output: str) -> dict[str, Any]:
         """
@@ -303,9 +209,7 @@ class QwenLLM(BaseLLM):
         """
         summary = str(payload.get('summary') or '').strip()
         raw_key_points = payload.get('key_points') or []
-        key_points = [
-            str(item).strip() for item in raw_key_points if str(item).strip()
-        ]
+        key_points = [str(item).strip() for item in raw_key_points if str(item).strip()]
         qa_answer = payload.get('qa_answer')
         quiz = self._parse_quiz(payload.get('quiz'))
 
