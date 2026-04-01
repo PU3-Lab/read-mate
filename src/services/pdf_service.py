@@ -10,6 +10,13 @@ import logging
 
 from pypdf import PdfReader
 
+try:
+    from pdf2image import convert_from_bytes
+
+    PDF2IMAGE_AVAILABLE = True
+except ImportError:
+    PDF2IMAGE_AVAILABLE = False
+
 from core.config import PDF_MIN_CHARS
 from core.exceptions import PDFExtractionError
 from models.schemas import PDFResult
@@ -95,9 +102,7 @@ class PyPDFEngine(BasePDF):
         Returns:
             str: 전체 페이지 OCR 결과 텍스트
         """
-        try:
-            from pdf2image import convert_from_bytes
-        except ImportError:
+        if not PDF2IMAGE_AVAILABLE:
             logger.warning('[pdf] pdf2image 미설치 → 스캔형 OCR 불가')
             return ''
 
@@ -125,8 +130,6 @@ class PyPDFEngine(BasePDF):
     @staticmethod
     def _pil_to_bytes(image) -> bytes:
         """PIL Image → JPEG 바이트 변환."""
-        import io as _io
-
-        buf = _io.BytesIO()
+        buf = io.BytesIO()
         image.convert('RGB').save(buf, format='JPEG', quality=95)
         return buf.getvalue()

@@ -10,6 +10,9 @@ import logging
 import time
 import uuid
 
+import requests
+from TTS.api import TTS
+
 from core.config import ELEVENLABS_API_KEY, TMP_DIR, TTS_MODEL
 from core.exceptions import TTSGenerationError
 from lib.utils.device import available_device
@@ -58,8 +61,6 @@ class XTTSEngine(BaseTTS):
     def __init__(self) -> None:
         if self._model is not None:
             return
-        from TTS.api import TTS
-
         device = available_device()
         logger.info('[tts] XTTS v2 loading device=%s', device)
         self._tts = TTS(model_name=TTS_MODEL).to(device)
@@ -164,8 +165,6 @@ class ElevenLabsTTS(BaseTTS):
         Raises:
             TTSGenerationError: API 호출 실패 시
         """
-        import requests
-
         if not text.strip():
             raise TTSGenerationError('TTS 입력 텍스트가 비어 있습니다.')
 

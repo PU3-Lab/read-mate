@@ -14,6 +14,7 @@ from pathlib import Path
 
 import numpy as np
 import requests
+from paddleocr import PaddleOCR
 from PIL import Image
 
 from core.config import (
@@ -49,8 +50,6 @@ class PaddleOCREngine(BaseOCR):
     def __init__(self) -> None:
         if self._ocr is not None:
             return
-        from paddleocr import PaddleOCR
-
         device = available_device()
         use_gpu = device == 'cuda'
         logger.info('[ocr] PaddleOCR loading use_gpu=%s', use_gpu)
