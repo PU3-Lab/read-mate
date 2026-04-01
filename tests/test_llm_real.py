@@ -1,31 +1,29 @@
 """
-QwenLLM 실 추론 테스트.
-실제 모델을 로드해 요약·질의응답 결과를 검증한다.
+LLM 실 추론 테스트 (Qwen / OpenAI 선택 가능).
+기본: 텍스트 → 요약 (질문 없음)
+QA:   --qa 플래그로 별도 실행
 
 실행:
-    uv run python tests/test_llm_real.py
+    uv run python tests/test_llm_real.py                          # Qwen, 전체 요약
+    uv run python tests/test_llm_real.py --engine gpt             # GPT, 전체 요약
     uv run python tests/test_llm_real.py --sample science_climate
-    uv run python tests/test_llm_real.py --all
+    uv run python tests/test_llm_real.py --qa                     # 요약 + QA
+    uv run python tests/test_llm_real.py --engine qwen --model Qwen/Qwen2.5-14B-Instruct
+    uv run python tests/test_llm_real.py --engine gpt  --model gpt-4.1
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import logging
-import sys
 import time
-from pathlib import Path
 
-from data.sample_texts import SAMPLES
-
+from lib.utils.path import data_path
 from models.schemas import TaskType
-from services.llm import QwenLLM
-
-# ── 경로 설정 ───────────────────────────────────────────────────
-ROOT = Path(__file__).parent.parent
-sys.path.insert(0, str(ROOT / 'src'))
-sys.path.insert(0, str(ROOT / 'tests'))
-
+from services.llm_base import ChunkedLLM
+from services.llm_openai import OpenAILLM
+from services.llm_qwen import QwenLLM
 
 logging.basicConfig(
     level=logging.INFO,
@@ -35,9 +33,9 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ── 평가 기준 ───────────────────────────────────────────────────
-MIN_SUMMARY_LEN = 30  # 요약이 최소 30자 이상
-MIN_KEY_POINTS = 2  # 핵심 포인트 최소 2개
-MIN_QA_ANSWER_LEN = 10  # QA 답변 최소 10자
+MIN_SUMMARY_LEN = 30
+MIN_KEY_POINTS = 2
+MIN_QA_ANSWER_LEN = 10
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -53,32 +51,20 @@ def section(title: str) -> None:
 
 def check(label: str, passed: bool, detail: str = '') -> bool:
     mark = '✅' if passed else '❌'
-    line = f'  {mark} {label}'
-    if detail:
-        line += f'  ({detail})'
-    print(line)
+    print(f'  {mark} {label}' + (f'  ({detail})' if detail else ''))
     return passed
 
 
 # ─────────────────────────────────────────────────────────────────
-# 단일 샘플 테스트
+# 요약 테스트
 # ─────────────────────────────────────────────────────────────────
 
 
-def run_sample(llm: QwenLLM, key: str, sample: dict) -> dict:
-    label = sample['label']
+def run_summarize(llm: ChunkedLLM, key: str, sample: dict) -> dict:
+    section(f'[{key}] {sample["label"]}')
     text = sample['text']
-    question = sample.get('question')
-
-    section(f'[{key}] {label}')
     print(f'  입력 길이: {len(text)}자')
-    if question:
-        print(f'  질문: {question}')
 
-    results = {}
-
-    # ── 1. 요약 테스트 ──────────────────────────────────────────
-    print('\n  ▶ SUMMARIZE')
     t0 = time.perf_counter()
     result = llm.generate(text, TaskType.SUMMARIZE)
     elapsed = time.perf_counter() - t0
@@ -89,52 +75,54 @@ def run_sample(llm: QwenLLM, key: str, sample: dict) -> dict:
         print(f'    {i}. {kp}')
     print(f'\n  ⏱  {elapsed:.2f}s | 엔진: {result.engine}')
 
-    ok_summary = check(
+    ok = check(
         'summary 길이',
         len(result.summary) >= MIN_SUMMARY_LEN,
         f'{len(result.summary)}자',
     )
-    ok_kp = check(
+    ok &= check(
         'key_points 개수',
         len(result.key_points) >= MIN_KEY_POINTS,
         f'{len(result.key_points)}개',
     )
-    results['summarize'] = {
-        'passed': ok_summary and ok_kp,
-        'elapsed': round(elapsed, 2),
-    }
-
-    # ── 2. QA 테스트 ────────────────────────────────────────────
-    if question:
-        print('\n  ▶ QA')
-        t0 = time.perf_counter()
-        qa_result = llm.generate(text, TaskType.QA, question=question)
-        elapsed = time.perf_counter() - t0
-
-        print(f'\n  [질문] {question}')
-        print(f'  [답변] {qa_result.qa_answer}')
-        print(f'\n  ⏱  {elapsed:.2f}s')
-
-        ok_qa = check('qa_answer 존재', bool(qa_result.qa_answer))
-        ok_qa_len = check(
-            'qa_answer 길이',
-            len(qa_result.qa_answer or '') >= MIN_QA_ANSWER_LEN,
-            f'{len(qa_result.qa_answer or "")}자',
-        )
-        results['qa'] = {'passed': ok_qa and ok_qa_len, 'elapsed': round(elapsed, 2)}
-
-    return results
+    return {'passed': ok, 'elapsed': round(elapsed, 2)}
 
 
 # ─────────────────────────────────────────────────────────────────
-# 전체 결과 집계
+# QA 테스트
+# ─────────────────────────────────────────────────────────────────
+
+
+def run_qa(llm: ChunkedLLM, key: str, sample: dict) -> dict | None:
+    question = sample.get('question')
+    if not question:
+        return None
+
+    print(f'\n  ▶ QA: {question}')
+    t0 = time.perf_counter()
+    result = llm.generate(sample['text'], TaskType.QA, question=question)
+    elapsed = time.perf_counter() - t0
+
+    print(f'  [답변] {result.qa_answer}')
+    print(f'  ⏱  {elapsed:.2f}s')
+
+    ok = check('qa_answer 존재', bool(result.qa_answer))
+    ok &= check(
+        'qa_answer 길이',
+        len(result.qa_answer or '') >= MIN_QA_ANSWER_LEN,
+        f'{len(result.qa_answer or "")}자',
+    )
+    return {'passed': ok, 'elapsed': round(elapsed, 2)}
+
+
+# ─────────────────────────────────────────────────────────────────
+# 결과 집계
 # ─────────────────────────────────────────────────────────────────
 
 
 def print_summary(all_results: dict) -> None:
     section('테스트 결과 요약')
-    total = 0
-    passed = 0
+    total, passed = 0, 0
     for key, tasks in all_results.items():
         for task, res in tasks.items():
             total += 1
@@ -144,10 +132,11 @@ def print_summary(all_results: dict) -> None:
             print(f'  {mark} [{key}] {task}  ({res["elapsed"]}s)')
 
     print(f'\n  결과: {passed}/{total} 통과')
-    if passed == total:
-        print('\n  🎉 모든 테스트 통과!')
-    else:
-        print(f'\n  ⚠️  {total - passed}개 실패. 로그를 확인하세요.')
+    print(
+        '\n  🎉 모든 테스트 통과!'
+        if passed == total
+        else f'\n  ⚠️  {total - passed}개 실패.'
+    )
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -155,31 +144,58 @@ def print_summary(all_results: dict) -> None:
 # ─────────────────────────────────────────────────────────────────
 
 
+ENGINE_DEFAULTS = {
+    'qwen': 'Qwen/Qwen2.5-7B-Instruct',
+    'gpt': 'gpt-4.1-mini',
+}
+
+
+def build_llm(engine: str, model: str | None) -> ChunkedLLM:
+    """엔진 이름에 따라 LLM 인스턴스를 생성한다."""
+    model_name = model or ENGINE_DEFAULTS[engine]
+    if engine == 'gpt':
+        return OpenAILLM(model_name=model_name)
+    return QwenLLM(model_name=model_name)
+
+
 def main() -> None:
-    parser = argparse.ArgumentParser(description='QwenLLM 실 추론 테스트')
+    parser = argparse.ArgumentParser(description='LLM 실 추론 테스트')
     parser.add_argument(
-        '--sample', choices=list(SAMPLES.keys()), help='특정 샘플만 실행'
+        '--engine',
+        choices=['qwen', 'gpt'],
+        default='qwen',
+        help='사용할 엔진 (기본: qwen)',
     )
-    parser.add_argument('--all', action='store_true', help='전체 샘플 실행 (기본값)')
+    with open(data_path() / 'sample_texts.json', encoding='utf-8') as f:
+        samples_dict = json.loads(f.read())
+
     parser.add_argument(
-        '--model',
-        default='Qwen/Qwen2.5-7B-Instruct',
-        help='사용할 모델명 (기본: Qwen2.5-7B-Instruct)',
+        '--sample', choices=list(samples_dict.keys()), help='특정 샘플만 실행'
     )
+    parser.add_argument('--qa', action='store_true', help='QA 테스트도 함께 실행')
+    parser.add_argument('--model', default=None, help='엔진 기본값 대신 사용할 모델명')
     args = parser.parse_args()
 
-    print('\n🚀 QwenLLM 실 테스트 시작')
-    print(f'   모델: {args.model}')
+    model_name = args.model or ENGINE_DEFAULTS[args.engine]
+    print('\n🚀 LLM 실 테스트 시작')
+    print(f'   엔진: {args.engine}')
+    print(f'   모델: {model_name}')
+    print(f'   모드: 요약{"+ QA" if args.qa else ""}')
 
     t_load = time.perf_counter()
-    llm = QwenLLM(model_name=args.model)
-    print(f'   모델 로드: {time.perf_counter() - t_load:.1f}s')
+    llm = build_llm(args.engine, args.model)
+    print(f'   준비 완료: {time.perf_counter() - t_load:.1f}s')
 
-    targets = {args.sample: SAMPLES[args.sample]} if args.sample else SAMPLES
+    targets = {args.sample: samples_dict[args.sample]} if args.sample else samples_dict
 
     all_results: dict = {}
     for key, sample in targets.items():
-        all_results[key] = run_sample(llm, key, sample)
+        all_results[key] = {}
+        all_results[key]['summarize'] = run_summarize(llm, key, sample)
+        if args.qa:
+            qa = run_qa(llm, key, sample)
+            if qa:
+                all_results[key]['qa'] = qa
 
     print_summary(all_results)
 
