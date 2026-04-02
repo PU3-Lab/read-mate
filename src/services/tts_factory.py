@@ -9,7 +9,7 @@ from typing import Literal
 
 from services.base import BaseTTS
 
-EngineType = Literal['kokoro', 'mms', 'edge', 'elevenlabs']
+EngineType = Literal['kokoro', 'mms', 'edge', 'elevenlabs', 'zonos']
 
 # 엔진 이름 → 클래스 매핑 (지연 임포트로 미사용 엔진 로드 방지)
 _REGISTRY: dict[str, str] = {
@@ -17,6 +17,7 @@ _REGISTRY: dict[str, str] = {
     'mms':        'services.tts_mms.MMSEngine',
     'edge':       'services.tts_edge.EdgeTTSEngine',
     'elevenlabs': 'services.tts_elevenlabs.ElevenLabsTTS',
+    'zonos':      'services.tts_zonos.ZonosEngine',
 }
 
 
@@ -36,7 +37,7 @@ class TTSFactory:
         엔진 이름으로 TTS 엔진 인스턴스를 반환한다.
 
         Args:
-            engine: 'kokoro' | 'mms' | 'edge' | 'elevenlabs'
+            engine: 'kokoro' | 'mms' | 'edge' | 'elevenlabs' | 'zonos'
 
         Returns:
             BaseTTS 구현체

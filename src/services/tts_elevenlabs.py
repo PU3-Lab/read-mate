@@ -17,13 +17,6 @@ from services.base import BaseTTS
 
 logger = logging.getLogger(__name__)
 
-ELEVENLABS_VOICES: dict[str, str] = {
-    'Rachel': '21m00Tcm4TlvDq8ikWAM',
-    'Domi': 'AZnzlk1XvdvUeBnXmlld',
-    'Bella': 'EXAVITQu4vr4xnSDxMaL',
-    'Antoni': 'ErXwobaYiN019PkySvjV',
-    'Elli': 'MF3mGyEYCl7XYWbV9V6O',
-}
 DEFAULT_VOICE = 'Rachel'
 ELEVENLABS_MODEL = 'eleven_multilingual_v2'
 
@@ -44,6 +37,7 @@ class ElevenLabsTTS(BaseTTS):
         if not api_key:
             raise ValueError('ELEVENLABS_API_KEY가 .env에 설정되어 있지 않습니다.')
         self.api_key = api_key
+        self._voices_cache: dict[str, str] | None = None
 
     def synthesize(self, text: str, voice_preset: str = DEFAULT_VOICE) -> TTSResult:
         """
@@ -62,7 +56,8 @@ class ElevenLabsTTS(BaseTTS):
         if not text.strip():
             raise TTSGenerationError('TTS 입력 텍스트가 비어 있습니다.')
 
-        voice_id = ELEVENLABS_VOICES.get(voice_preset, ELEVENLABS_VOICES[DEFAULT_VOICE])
+        voice_map = self._get_voice_map()
+        voice_name, voice_id = self._resolve_voice(voice_preset, voice_map)
         url = f'https://api.elevenlabs.io/v1/text-to-speech/{voice_id}'
 
         try:
@@ -90,17 +85,66 @@ class ElevenLabsTTS(BaseTTS):
 
         logger.info(
             '[tts:elevenlabs] voice=%s chars=%d elapsed=%.2fs',
-            voice_preset,
+            voice_name,
             len(text),
             duration,
         )
         return TTSResult(
             audio_path=str(out_path),
-            voice_preset=voice_preset,
+            voice_preset=voice_name,
             engine='elevenlabs/eleven_multilingual_v2',
             duration_sec=round(duration, 2),
         )
 
     def list_presets(self) -> list[str]:
-        """사용 가능한 ElevenLabs 프리셋 목소리 목록 반환."""
-        return list(ELEVENLABS_VOICES.keys())
+        """사용 가능한 ElevenLabs 계정 화자 목록 반환."""
+        return list(self._get_voice_map().keys())
+
+    def _get_voice_map(self) -> dict[str, str]:
+        """ElevenLabs API에서 현재 계정의 화자 목록을 동적으로 조회한다."""
+        if self._voices_cache is not None:
+            return self._voices_cache
+
+        try:
+            response = requests.get(
+                'https://api.elevenlabs.io/v1/voices',
+                headers={'xi-api-key': self.api_key},
+                timeout=30,
+            )
+            response.raise_for_status()
+            payload = response.json()
+        except Exception as exc:
+            raise TTSGenerationError(f'ElevenLabs 화자 목록 조회 실패: {exc}') from exc
+
+        voices = payload.get('voices', [])
+        voice_map: dict[str, str] = {}
+        for voice in voices:
+            voice_id = str(voice.get('voice_id') or '').strip()
+            voice_name = str(voice.get('name') or '').strip()
+            if voice_id and voice_name:
+                voice_map[voice_name] = voice_id
+
+        if not voice_map:
+            raise TTSGenerationError('ElevenLabs에서 사용 가능한 화자를 찾지 못했습니다.')
+
+        self._voices_cache = dict(sorted(voice_map.items()))
+        return self._voices_cache
+
+    @staticmethod
+    def _resolve_voice(
+        voice_preset: str,
+        voice_map: dict[str, str],
+    ) -> tuple[str, str]:
+        """입력 프리셋을 실제 ElevenLabs 화자 이름/ID로 정규화한다."""
+        if voice_preset in voice_map:
+            return voice_preset, voice_map[voice_preset]
+
+        for voice_name, voice_id in voice_map.items():
+            if voice_preset == voice_id:
+                return voice_name, voice_id
+
+        if DEFAULT_VOICE in voice_map:
+            return DEFAULT_VOICE, voice_map[DEFAULT_VOICE]
+
+        voice_name = next(iter(voice_map))
+        return voice_name, voice_map[voice_name]

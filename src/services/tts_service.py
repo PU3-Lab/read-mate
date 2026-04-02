@@ -20,6 +20,7 @@ class TTSService:
         'mms'        - Meta MMS-TTS 로컬 (한국어 전용, 단일 화자)
         'edge'       - Microsoft Edge TTS (한국어 최상급 품질, 인터넷 필요)
         'elevenlabs' - ElevenLabs API (다국어, API 키 필요)
+        'zonos'      - Zyphra Zonos 로컬 (참조 오디오 기반 화자 클로닝)
     """
 
     def __init__(self, engine: EngineType = 'mms') -> None:

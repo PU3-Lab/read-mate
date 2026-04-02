@@ -5,6 +5,7 @@ Kokoro ONNX 로컬 TTS 엔진.
 from __future__ import annotations
 
 import logging
+import os
 import time
 import urllib.request
 import uuid
@@ -58,6 +59,7 @@ class KokoroEngine(BaseTTS):
     def __init__(self) -> None:
         if self._model is not None:
             return
+        self._patch_phonemizer_compat()
         from kokoro_onnx import Kokoro
 
         kokoro_dir = MODEL_DIR / 'kokoro'
@@ -76,6 +78,88 @@ class KokoroEngine(BaseTTS):
             len(self._voices),
             self._default_voice,
         )
+
+    @staticmethod
+    def _patch_phonemizer_compat() -> None:
+        """
+        kokoro-onnx가 기대하는 구버전 phonemizer API를 보정한다.
+
+        최신 phonemizer의 EspeakWrapper에는 `set_data_path()`가 없어
+        kokoro-onnx 초기화가 깨진다. 또한 최신 phonemizer는 eSpeak API
+        초기화 시 data path를 전달하지 않아, 번들 dylib 안에 박힌 잘못된
+        기본 경로를 타는 경우가 있다. 둘 다 런타임 패치로 보정한다.
+        """
+        try:
+            import espeakng_loader
+            from phonemizer.backend.espeak.api import EspeakAPI
+            from phonemizer.backend.espeak.wrapper import EspeakWrapper
+        except Exception:
+            return
+
+        if not hasattr(EspeakWrapper, 'set_data_path'):
+            @classmethod
+            def set_data_path(cls, data_path: str | os.PathLike[str] | None) -> None:
+                os.environ['PHONEMIZER_ESPEAK_DATA_PATH'] = (
+                    '' if data_path is None else str(data_path)
+                )
+
+            EspeakWrapper.set_data_path = set_data_path
+
+        os.environ.setdefault(
+            'PHONEMIZER_ESPEAK_LIBRARY',
+            str(espeakng_loader.get_library_path()),
+        )
+        os.environ.setdefault(
+            'PHONEMIZER_ESPEAK_DATA_PATH',
+            str(espeakng_loader.get_data_path()),
+        )
+
+        if not getattr(EspeakAPI, '_readmate_patched_data_path', False):
+            def _patched_espeakapi_init(self, library) -> None:
+                import atexit
+                import ctypes
+                import pathlib
+                import shutil
+                import sys
+                import tempfile
+                import weakref
+
+                self._library = None
+
+                try:
+                    espeak = ctypes.cdll.LoadLibrary(str(library))
+                    library_path = self._shared_library_path(espeak)
+                    del espeak
+                except OSError as error:
+                    raise RuntimeError(
+                        f'failed to load espeak library: {error}'
+                    ) from None
+
+                self._tempdir = tempfile.mkdtemp()
+
+                if sys.platform == 'win32':  # pragma: nocover
+                    atexit.register(self._delete_win32)
+                else:
+                    weakref.finalize(self, self._delete, self._library, self._tempdir)
+
+                espeak_copy = pathlib.Path(self._tempdir) / library_path.name
+                shutil.copy(library_path, espeak_copy, follow_symlinks=False)
+
+                self._library = ctypes.cdll.LoadLibrary(str(espeak_copy))
+                try:
+                    data_path = os.environ.get('PHONEMIZER_ESPEAK_DATA_PATH') or None
+                    data_path_arg = None if data_path is None else os.fsencode(data_path)
+                    if self._library.espeak_Initialize(0x02, 0, data_path_arg, 0) <= 0:
+                        raise RuntimeError(
+                            'failed to initialize espeak shared library'
+                        )
+                except AttributeError:  # pragma: nocover
+                    raise RuntimeError('failed to load espeak library') from None
+
+                self._library_path = library_path
+
+            EspeakAPI.__init__ = _patched_espeakapi_init
+            EspeakAPI._readmate_patched_data_path = True
 
     def _pick_default_voice(self) -> str:
         """한국어 화자가 있으면 첫 번째를 반환, 없으면 폴백 사용."""

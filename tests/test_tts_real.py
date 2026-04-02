@@ -6,10 +6,13 @@ TTS 실 추론 테스트.
     uv run python tests/test_tts_real.py --engine mms                # MMS-TTS 한국어
     uv run python tests/test_tts_real.py --engine edge               # Edge TTS 한국어
     uv run python tests/test_tts_real.py --engine elevenlabs         # ElevenLabs API
+    uv run python tests/test_tts_real.py --engine zonos              # Zonos 기본 화자
+    uv run python tests/test_tts_real.py --engine zonos --speaker-audio data/audio/ref.wav
     uv run python tests/test_tts_real.py --voice "InJoon"            # 특정 목소리 지정
     uv run python tests/test_tts_real.py --text "안녕하세요"          # 커스텀 텍스트
     uv run python tests/test_tts_real.py --all-voices                # 전체 화자 순차 테스트
     uv run python tests/test_tts_real.py --all-engines               # 전체 엔진 기본 화자 테스트
+    uv run python tests/test_tts_real.py --all-engines --all-voices  # 전체 엔진 전체 화자 테스트
 
 합성된 오디오는 data/tts_output/ 에 저장된다.
 """
@@ -18,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import re
 import sys
 import time
 from pathlib import Path
@@ -35,6 +39,12 @@ logger = logging.getLogger(__name__)
 
 MIN_FILE_SIZE_BYTES = 1024
 DEFAULT_TEXT = '안녕하세요. ReadMate TTS 실 추론 테스트입니다. 음성이 잘 들리시나요?'
+
+
+def sanitize_filename(name: str) -> str:
+    """화자 이름을 파일명으로 안전하게 변환한다."""
+    sanitized = re.sub(r'[^A-Za-z0-9._-]+', '_', name.strip())
+    return sanitized.strip('._') or 'voice'
 
 
 def section(title: str) -> None:
@@ -76,7 +86,7 @@ def run_synthesize(
 
     audio_path = Path(result.audio_path)
     suffix = audio_path.suffix.lstrip('.')
-    dest = output_dir / f'{voice_preset.replace(" ", "_")}_{suffix}.{suffix}'
+    dest = output_dir / f'{sanitize_filename(voice_preset)}_{suffix}.{suffix}'
     dest.write_bytes(audio_path.read_bytes())
     file_size = audio_path.stat().st_size
 
@@ -112,6 +122,27 @@ def print_summary(all_results: dict) -> None:
     )
 
 
+def build_voice_plan(
+    engine: str,
+    service: TTSService,
+    all_voices: bool,
+    speaker_audio: str | None,
+) -> list[str]:
+    """
+    엔진별 테스트할 화자 목록을 결정한다.
+
+    Zonos는 고정 화자 목록이 없으므로 speaker_audio가 있으면 그 경로를 사용하고,
+    없으면 default 1회만 실행한다.
+    """
+    if engine == 'zonos':
+        return [speaker_audio] if speaker_audio else ['default']
+
+    presets = service.list_presets()
+    if not presets:
+        return []
+    return presets if all_voices else [presets[0]]
+
+
 def main() -> None:
     available = TTSFactory.available()
     parser = argparse.ArgumentParser(description='TTS 실 추론 테스트')
@@ -122,6 +153,11 @@ def main() -> None:
         help=f'TTS 엔진 선택 (기본: mms) / 선택지: {available}',
     )
     parser.add_argument('--voice', default=None, help='목소리 프리셋 이름')
+    parser.add_argument(
+        '--speaker-audio',
+        default=None,
+        help='참조 화자 오디오 경로 (Zonos 등 화자 클로닝용)',
+    )
     parser.add_argument('--text', default=DEFAULT_TEXT, help='합성할 텍스트')
     parser.add_argument('--all-voices', action='store_true', help='전체 화자 순차 테스트')
     parser.add_argument('--all-engines', action='store_true', help='전체 엔진 기본 화자 테스트')
@@ -131,7 +167,13 @@ def main() -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     if args.all_engines:
-        _run_all_engines(args.text, output_dir, available)
+        _run_all_engines(
+            text=args.text,
+            output_dir=output_dir,
+            engines=available,
+            all_voices=args.all_voices,
+            speaker_audio=args.speaker_audio,
+        )
         return
 
     print('\n🚀 TTS 실 테스트 시작')
@@ -146,18 +188,19 @@ def main() -> None:
     print(f'   엔진 준비 완료: {time.perf_counter() - t_load:.1f}s')
 
     available_voices = service.list_presets()
-    default_voice = available_voices[0]
+    voices = build_voice_plan(
+        engine=args.engine,
+        service=service,
+        all_voices=args.all_voices,
+        speaker_audio=args.speaker_audio,
+    )
 
-    if args.all_voices:
-        voices = available_voices
-    elif args.voice:
+    if args.voice:
         if args.voice not in available_voices:
             print(f'\n⚠️  알 수 없는 목소리: {args.voice!r}')
             print(f'   사용 가능: {available_voices}')
             sys.exit(1)
         voices = [args.voice]
-    else:
-        voices = [default_voice]
 
     print(f'   사용 가능한 목소리: {available_voices}')
     print(f'   테스트 목소리 수: {len(voices)}개')
@@ -175,17 +218,29 @@ def main() -> None:
     print_summary(all_results)
 
 
-def _run_all_engines(text: str, output_dir: Path, engines: list[str]) -> None:
-    """전체 엔진을 기본 화자로 순차 테스트한다."""
+def _run_all_engines(
+    text: str,
+    output_dir: Path,
+    engines: list[str],
+    all_voices: bool,
+    speaker_audio: str | None,
+) -> None:
+    """전체 엔진을 기본 화자 또는 전체 화자로 순차 테스트한다."""
     section('전체 엔진 테스트')
     all_results: dict = {}
     for engine in engines:
         print(f'\n  [엔진: {engine}]')
         try:
             service = TTSService(engine=engine)
-            voice = service.list_presets()[0]
-            res = run_synthesize(service, text, voice, output_dir)
-            all_results[engine] = res
+            voices = build_voice_plan(
+                engine=engine,
+                service=service,
+                all_voices=all_voices,
+                speaker_audio=speaker_audio,
+            )
+            for voice in voices:
+                res = run_synthesize(service, text, voice, output_dir)
+                all_results[f'{engine}:{voice}'] = res
         except Exception as exc:
             print(f'  ❌ {engine} 실패: {exc}')
             all_results[engine] = {'passed': False, 'elapsed': 0.0, 'voice': ''}
