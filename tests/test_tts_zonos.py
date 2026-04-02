@@ -7,6 +7,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+import numpy as np
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 
 from services.tts_factory import TTSFactory  # noqa: E402
@@ -77,7 +79,9 @@ class ZonosEngineTests(unittest.TestCase):
 
         fake_torchaudio_module = types.ModuleType('torchaudio')
         fake_torchaudio_module.load = lambda path: ('wav', 16000)
-        fake_torchaudio_module.save = lambda path, waveform, sr: Path(path).write_bytes(b'RIFF')
+        fake_torchaudio_module.save = lambda path, waveform, sr: Path(path).write_bytes(
+            b'RIFF'
+        )
 
         fake_torch_module = types.ModuleType('torch')
 
@@ -89,6 +93,12 @@ class ZonosEngineTests(unittest.TestCase):
                 return False
 
         fake_torch_module.inference_mode = lambda: _InferenceMode()
+        fake_torch_module.load = lambda path, map_location=None: (
+            'loaded-speaker',
+            path,
+            map_location,
+        )
+        fake_torch_module.save = lambda obj, path: Path(path).write_bytes(b'PT')
 
         modules = {
             'zonos': fake_zonos_package,
@@ -123,6 +133,44 @@ class ZonosEngineTests(unittest.TestCase):
         self.assertEqual(result.voice_preset, ref_audio.name)
         self.assertIn('zonos/', result.engine)
 
+    def test_synthesize_accepts_saved_embedding_path(self) -> None:
+        with tempfile.NamedTemporaryFile(suffix='.pt') as speaker_embedding:
+            with self._install_fake_modules():
+                with patch('services.tts_zonos.available_device', return_value='cpu'):
+                    engine = ZonosEngine()
+                    result = engine.synthesize('hello world', speaker_embedding.name)
+
+        self.assertTrue(result.audio_path.endswith('.wav'))
+        self.assertEqual(result.voice_preset, speaker_embedding.name)
+        self.assertIn('zonos/', result.engine)
+
+    def test_list_presets_includes_saved_voice_names(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            voices_dir = Path(temp_dir)
+            (voices_dir / 'kim.pt').write_bytes(b'PT')
+            (voices_dir / 'narrator.pt').write_bytes(b'PT')
+
+            with self._install_fake_modules():
+                with patch('services.tts_zonos.available_device', return_value='cpu'):
+                    with patch('services.tts_zonos.ZONOS_EMBEDDINGS_DIR', voices_dir):
+                        engine = ZonosEngine()
+                        engine.embeddings_dir = voices_dir
+                        self.assertEqual(
+                            engine.list_presets(),
+                            ['default', 'kim', 'narrator'],
+                        )
+
+    def test_resolve_speaker_source_accepts_saved_voice_name(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            voices_dir = Path(temp_dir)
+            voice_path = voices_dir / 'kim.pt'
+            voice_path.write_bytes(b'PT')
+
+            with patch('services.tts_zonos.ZONOS_EMBEDDINGS_DIR', voices_dir):
+                resolved = ZonosEngine._resolve_speaker_source('kim')
+
+        self.assertEqual(resolved, voice_path)
+
     def test_runtime_error_message_is_platform_aware_on_macos(self) -> None:
         with patch('services.tts_zonos.sys.platform', 'darwin'):
             message = ZonosEngine._build_runtime_error_message(
@@ -142,16 +190,43 @@ class ZonosEngineTests(unittest.TestCase):
         self.assertIn('apt install -y espeak-ng', message)
 
     def test_runtime_validation_detects_missing_backbone_module(self) -> None:
-        with patch('services.tts_zonos.shutil.which', return_value='/usr/bin/espeak-ng'):
+        with patch(
+            'services.tts_zonos.shutil.which', return_value='/usr/bin/espeak-ng'
+        ):
+
             def fake_find_spec(name: str):
                 if name in {'zonos', 'zonos.model'}:
                     return object()
                 return None
 
-            with patch('services.tts_zonos.importlib.util.find_spec', side_effect=fake_find_spec):
+            with patch(
+                'services.tts_zonos.importlib.util.find_spec',
+                side_effect=fake_find_spec,
+            ):
                 with patch('services.tts_zonos.available_device', return_value='cpu'):
                     with self.assertRaisesRegex(Exception, 'zonos.backbone'):
                         ZonosEngine()
+
+    def test_trim_leading_silence_skips_spurious_opening_burst(self) -> None:
+        sr = 100
+        opening_burst = np.ones((20, 1), dtype=np.float32) * 0.2
+        long_silence = np.zeros((60, 1), dtype=np.float32)
+        speech = np.ones((30, 1), dtype=np.float32) * 0.2
+        audio = np.concatenate([opening_burst, long_silence, speech], axis=0)
+
+        trimmed = ZonosEngine._trim_leading_silence(audio, sr, np)
+
+        self.assertLess(trimmed.shape[0], audio.shape[0])
+        self.assertAlmostEqual(float(trimmed[0, 0]), 0.0, places=6)
+        self.assertGreater(float(trimmed[-1, 0]), 0.0)
+
+    def test_trim_leading_silence_keeps_normal_start(self) -> None:
+        sr = 100
+        speech = np.ones((40, 1), dtype=np.float32) * 0.2
+
+        trimmed = ZonosEngine._trim_leading_silence(speech, sr, np)
+
+        self.assertEqual(trimmed.shape, speech.shape)
 
 
 if __name__ == '__main__':

@@ -43,6 +43,12 @@ class TTSService:
         """사용 가능한 목소리 프리셋 목록 반환."""
         return self._engine.list_presets()
 
+    def save_voice(self, source_path: str, voice_name: str) -> str:
+        """엔진이 지원하면 참조 음성을 이름 있는 보이스로 저장한다."""
+        if not hasattr(self._engine, 'save_voice'):
+            raise NotImplementedError('현재 엔진은 목소리 저장을 지원하지 않습니다.')
+        return self._engine.save_voice(source_path, voice_name)
+
     @staticmethod
     def available_engines() -> list[str]:
         """사용 가능한 엔진 이름 목록 반환."""

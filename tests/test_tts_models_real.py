@@ -11,6 +11,7 @@
     uv run python tests/test_tts_models_real.py --all-voices
     uv run python tests/test_tts_models_real.py --engine edge
     uv run python tests/test_tts_models_real.py --engine zonos --speaker-audio data/audio/ref.wav
+    uv run python tests/test_tts_models_real.py --engine zonos --speaker-audio samplehan --play
     uv run python tests/test_tts_models_real.py --strict
 """
 
@@ -19,6 +20,8 @@ from __future__ import annotations
 import argparse
 import logging
 import re
+import shutil
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -97,11 +100,31 @@ def build_voice_plan(
     return presets if all_voices else [presets[0]]
 
 
+def resolve_audio_player() -> list[str] | None:
+    """현재 환경에서 사용할 수 있는 오디오 플레이어를 찾는다."""
+    for command in (['afplay'], ['ffplay', '-nodisp', '-autoexit'], ['play']):
+        if shutil.which(command[0]):
+            return command
+    return None
+
+
+def play_audio_file(audio_path: Path) -> None:
+    """생성된 오디오 파일을 즉시 재생한다."""
+    command = resolve_audio_player()
+    if command is None:
+        raise RuntimeError(
+            '재생 가능한 오디오 플레이어를 찾지 못했습니다. '
+            'macOS는 afplay, 그 외 환경은 ffplay/play 설치가 필요합니다.'
+        )
+    subprocess.run([*command, str(audio_path)], check=True)
+
+
 def synthesize_once(
     engine: str,
     voice_preset: str,
     text: str,
     output_dir: Path,
+    play: bool,
 ) -> dict[str, object]:
     """엔진 하나와 화자 하나를 실제로 합성한다."""
     service = TTSService(engine=engine)
@@ -127,6 +150,12 @@ def synthesize_once(
     print(f'  voice:  {result.voice_preset}')
     print(f'  file:   {dest_path}')
     print(f'  time:   {result.duration_sec:.2f}s (wall: {elapsed:.2f}s)')
+    if play:
+        try:
+            print(f'  play:   {dest_path}')
+            play_audio_file(dest_path)
+        except Exception as exc:
+            print(f'  [SKIP] 재생 실패  ({exc})')
 
     return {
         'status': 'passed' if ok else 'failed',
@@ -143,6 +172,7 @@ def run_engine(
     output_dir: Path,
     all_voices: bool,
     speaker_audio: str | None,
+    play: bool,
 ) -> list[dict[str, object]]:
     """엔진 단위로 테스트를 실행한다."""
     section(f'ENGINE: {engine}')
@@ -179,7 +209,7 @@ def run_engine(
     for voice_preset in voice_plan:
         print(f'\n  voice preset: {voice_preset}')
         try:
-            result = synthesize_once(engine, voice_preset, text, output_dir)
+            result = synthesize_once(engine, voice_preset, text, output_dir, play)
         except Exception as exc:
             status = 'skipped' if should_skip_exception(exc) else 'failed'
             print(f'  [{status.upper()}] 합성 실패: {exc}')
@@ -244,6 +274,11 @@ def main() -> None:
         help='skip도 실패로 간주하고 비정상 종료',
     )
     parser.add_argument(
+        '--play',
+        action='store_true',
+        help='합성 성공 후 저장된 오디오를 바로 재생',
+    )
+    parser.add_argument(
         '--output-dir',
         type=Path,
         default=data_path() / 'tts_matrix_output',
@@ -268,6 +303,7 @@ def main() -> None:
                 output_dir=args.output_dir,
                 all_voices=args.all_voices,
                 speaker_audio=args.speaker_audio,
+                play=args.play,
             )
         )
 

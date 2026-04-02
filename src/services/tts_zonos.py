@@ -2,21 +2,34 @@
 Zonos 로컬 TTS 엔진.
 
 공식 예제를 기준으로 Zonos를 Hugging Face 모델에서 로드한다.
-고정 화자 프리셋은 없고, 필요하면 voice_preset에 참조 오디오 경로를 넣어
-화자 임베딩 기반 클로닝으로 사용한다.
+고정 화자 프리셋은 없고, 필요하면 voice_preset에 참조 오디오 경로, 저장된
+화자 임베딩(.pt) 경로, 또는 저장된 보이스 이름을 넣어 화자 클로닝으로 사용한다.
 """
 
 from __future__ import annotations
 
 import importlib.util
+import inspect
 import logging
+import re
 import shutil
 import sys
 import time
 import uuid
 from pathlib import Path
 
-from core.config import TMP_DIR, ZONOS_LANGUAGE, ZONOS_MAX_NEW_TOKENS, ZONOS_MODEL
+from core.config import (
+    TMP_DIR,
+    ZONOS_CFG_SCALE,
+    ZONOS_DNSMOS_OVRL,
+    ZONOS_EMBEDDINGS_DIR,
+    ZONOS_LANGUAGE,
+    ZONOS_MAX_NEW_TOKENS,
+    ZONOS_MIN_P,
+    ZONOS_MODEL,
+    ZONOS_PITCH_STD,
+    ZONOS_SPEAKING_RATE,
+)
 from core.exceptions import TTSGenerationError
 from lib.utils.device import available_device
 from models.schemas import TTSResult
@@ -33,7 +46,8 @@ class ZonosEngine(BaseTTS):
 
     주의:
     - 공식 구현은 고정 화자 목록보다 speaker embedding/voice cloning에 초점이 있다.
-    - voice_preset이 파일 경로이면 참조 오디오로 간주해 화자 클로닝을 시도한다.
+    - voice_preset이 파일 경로이거나 저장된 보이스 이름이면 참조 오디오(.wav)
+      또는 화자 임베딩(.pt)으로 간주해 화자 클로닝을 시도한다.
     - eSpeak-ng 시스템 의존성이 필요하다.
     """
 
@@ -50,6 +64,11 @@ class ZonosEngine(BaseTTS):
         model_name: str = ZONOS_MODEL,
         language: str = ZONOS_LANGUAGE,
         max_new_tokens: int = ZONOS_MAX_NEW_TOKENS,
+        cfg_scale: float = ZONOS_CFG_SCALE,
+        min_p: float = ZONOS_MIN_P,
+        speaking_rate: float = ZONOS_SPEAKING_RATE,
+        pitch_std: float = ZONOS_PITCH_STD,
+        dnsmos_ovrl: float = ZONOS_DNSMOS_OVRL,
     ) -> None:
         if self._model is not None:
             return
@@ -57,6 +76,12 @@ class ZonosEngine(BaseTTS):
         self.model_name = model_name
         self.language = language
         self.max_new_tokens = max_new_tokens
+        self.cfg_scale = cfg_scale
+        self.min_p = min_p
+        self.speaking_rate = speaking_rate
+        self.pitch_std = pitch_std
+        self.dnsmos_ovrl = dnsmos_ovrl
+        self.embeddings_dir = ZONOS_EMBEDDINGS_DIR
         self.device = self._resolve_device()
         self._validate_runtime()
 
@@ -84,7 +109,8 @@ class ZonosEngine(BaseTTS):
         """
         텍스트를 Zonos로 음성 합성한다.
 
-        voice_preset이 실제 파일 경로면 참조 화자 오디오로 사용한다.
+        voice_preset이 실제 파일 경로나 저장된 보이스 이름이면 참조 화자
+        오디오(.wav) 또는 speaker embedding(.pt)으로 사용한다.
         그렇지 않으면 speaker를 비조건부로 두고 기본 화자로 생성한다.
         """
         if not text.strip():
@@ -99,19 +125,18 @@ class ZonosEngine(BaseTTS):
                 'Zonos 추론 의존성 import 실패: torch/torchaudio/zonos 설치를 확인하세요.'
             ) from exc
 
-        speaker_audio_path = self._resolve_speaker_audio(voice_preset)
+        speaker_source_path = self._resolve_speaker_source(voice_preset)
         speaker = None
         used_preset = _DEFAULT_PRESET
 
         try:
-            if speaker_audio_path is not None:
-                wav, sampling_rate = self._load_speaker_audio(
-                    speaker_audio_path,
+            if speaker_source_path is not None:
+                speaker = self._load_or_make_speaker_embedding(
+                    speaker_source_path=speaker_source_path,
                     torch=torch,
                     torchaudio=torchaudio,
                 )
-                speaker = self._make_speaker_embedding(wav, sampling_rate)
-                used_preset = str(speaker_audio_path)
+                used_preset = str(speaker_source_path)
 
             t0 = time.perf_counter()
             cond_dict = self._make_conditioning_dict(
@@ -120,10 +145,11 @@ class ZonosEngine(BaseTTS):
                 speaker=speaker,
             )
             conditioning = self._zonos.prepare_conditioning(cond_dict)
+            generate_kwargs = self._build_generate_kwargs()
             with torch.inference_mode():
                 codes = self._zonos.generate(
                     conditioning,
-                    max_new_tokens=self.max_new_tokens,
+                    **generate_kwargs,
                 )
             wavs = self._zonos.autoencoder.decode(codes).cpu()
             waveform = self._normalize_waveform(wavs)
@@ -139,11 +165,16 @@ class ZonosEngine(BaseTTS):
             raise TTSGenerationError(f'Zonos 합성 실패: {exc}') from exc
 
         logger.info(
-            '[tts:zonos] voice=%s language=%s chars=%d elapsed=%.2fs',
+            '[tts:zonos] voice=%s language=%s chars=%d elapsed=%.2fs '
+            'cfg_scale=%.2f min_p=%.2f speaking_rate=%.1f pitch_std=%.1f',
             used_preset,
             self.language,
             len(text),
             duration,
+            self.cfg_scale,
+            self.min_p,
+            self.speaking_rate,
+            self.pitch_std,
         )
         return TTSResult(
             audio_path=str(out_path),
@@ -154,10 +185,16 @@ class ZonosEngine(BaseTTS):
 
     def list_presets(self) -> list[str]:
         """
-        Zonos는 고정 화자 프리셋 모델이 아니므로 default만 제공한다.
-        실제 화자 지정은 synthesize()의 voice_preset에 참조 오디오 경로를 넣어 처리한다.
+        Zonos는 저장된 보이스 라이브러리를 프리셋처럼 노출한다.
         """
-        return [_DEFAULT_PRESET]
+        saved_voices = sorted(path.stem for path in self.embeddings_dir.glob('*.pt'))
+        return [_DEFAULT_PRESET, *saved_voices]
+
+    def save_voice(self, source_path: str, voice_name: str) -> str:
+        """참조 오디오를 이름 있는 보이스로 저장한다."""
+        normalized_name = self._normalize_voice_name(voice_name)
+        embedding_path = self.embeddings_dir / f'{normalized_name}.pt'
+        return self.save_speaker_embedding(source_path, str(embedding_path))
 
     def _make_conditioning_dict(self, make_cond_dict, text: str, speaker):
         """
@@ -167,6 +204,9 @@ class ZonosEngine(BaseTTS):
         kwargs = {
             'text': text,
             'language': self.language,
+            'speaking_rate': self.speaking_rate,
+            'pitch_std': self.pitch_std,
+            'dnsmos_ovrl': self.dnsmos_ovrl,
         }
         if speaker is not None:
             kwargs['speaker'] = speaker
@@ -174,11 +214,23 @@ class ZonosEngine(BaseTTS):
             kwargs['speaker'] = None
             kwargs['unconditional_keys'] = ['speaker']
 
-        try:
-            return make_cond_dict(**kwargs)
-        except TypeError:
-            kwargs.pop('unconditional_keys', None)
-            return make_cond_dict(**kwargs)
+        return make_cond_dict(**self._filter_supported_kwargs(make_cond_dict, kwargs))
+
+    def _build_generate_kwargs(self) -> dict:
+        """현재 설치된 Zonos generate 시그니처에 맞는 생성 인자만 전달한다."""
+        kwargs = {
+            'max_new_tokens': self.max_new_tokens,
+            'cfg_scale': self.cfg_scale,
+            'sampling_params': {'min_p': self.min_p},
+        }
+        return self._filter_supported_kwargs(self._zonos.generate, kwargs)
+
+    @staticmethod
+    def _filter_supported_kwargs(func, kwargs: dict) -> dict:
+        """지원하는 키워드 인자만 남겨 버전별 API 차이를 흡수한다."""
+        signature = inspect.signature(func)
+        supported = set(signature.parameters)
+        return {key: value for key, value in kwargs.items() if key in supported}
 
     def _make_speaker_embedding(self, wav, sampling_rate):
         """현재 설치된 Zonos 버전에 맞는 speaker embedding API를 선택한다."""
@@ -187,6 +239,54 @@ class ZonosEngine(BaseTTS):
         if hasattr(self._zonos, 'embed_spk_audio'):
             return self._zonos.embed_spk_audio(wav, sampling_rate)
         raise TTSGenerationError('Zonos speaker embedding API를 찾지 못했습니다.')
+
+    def _load_or_make_speaker_embedding(
+        self, speaker_source_path: Path, torch, torchaudio
+    ):
+        """참조 오디오 또는 저장된 .pt speaker embedding을 speaker 조건으로 변환한다."""
+        if speaker_source_path.suffix.lower() == '.pt':
+            return self._load_speaker_embedding(speaker_source_path, torch=torch)
+
+        wav, sampling_rate = self._load_speaker_audio(
+            speaker_source_path,
+            torch=torch,
+            torchaudio=torchaudio,
+        )
+        return self._make_speaker_embedding(wav, sampling_rate)
+
+    def save_speaker_embedding(
+        self,
+        speaker_audio_path: str,
+        embedding_path: str,
+    ) -> str:
+        """
+        참조 오디오에서 speaker embedding을 추출해 .pt 파일로 저장한다.
+        """
+        try:
+            import torch
+            import torchaudio
+        except Exception as exc:
+            raise TTSGenerationError(
+                'Zonos 임베딩 저장 의존성 import 실패: torch/torchaudio 설치를 확인하세요.'
+            ) from exc
+
+        source_path = self._resolve_speaker_source(speaker_audio_path)
+        if source_path is None or source_path.suffix.lower() == '.pt':
+            raise TTSGenerationError(
+                'speaker embedding 저장에는 참조 오디오 파일이 필요합니다.'
+            )
+
+        wav, sampling_rate = self._load_speaker_audio(
+            source_path,
+            torch=torch,
+            torchaudio=torchaudio,
+        )
+        speaker = self._make_speaker_embedding(wav, sampling_rate)
+
+        out_path = Path(embedding_path).expanduser()
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        torch.save(speaker, str(out_path))
+        return str(out_path)
 
     @staticmethod
     def _load_speaker_audio(speaker_audio_path: Path, torch, torchaudio):
@@ -208,6 +308,13 @@ class ZonosEngine(BaseTTS):
         except Exception:
             return torchaudio.load(str(speaker_audio_path))
 
+    def _load_speaker_embedding(self, speaker_embedding_path: Path, torch):
+        """저장된 .pt speaker embedding을 현재 디바이스에 맞게 로드한다."""
+        speaker = torch.load(str(speaker_embedding_path), map_location=self.device)
+        if hasattr(speaker, 'to'):
+            return speaker.to(self.device)
+        return speaker
+
     @staticmethod
     def _normalize_waveform(wavs):
         """
@@ -218,22 +325,34 @@ class ZonosEngine(BaseTTS):
         if wavs.ndim == 1:
             wavs = wavs.unsqueeze(0)
         if wavs.ndim != 2:
-            raise TTSGenerationError(f'예상하지 못한 Zonos waveform shape: {tuple(wavs.shape)}')
+            raise TTSGenerationError(
+                f'예상하지 못한 Zonos waveform shape: {tuple(wavs.shape)}'
+            )
         return wavs
 
     @staticmethod
-    def _save_waveform(out_path: Path, waveform, sampling_rate: int, torchaudio) -> None:
+    def _save_waveform(
+        out_path: Path, waveform, sampling_rate: int, torchaudio
+    ) -> None:
         """
         생성 결과는 soundfile 우선 저장한다.
 
         현재 macOS/CPU 조합의 torchaudio.save는 TorchCodec을 요구할 수 있어,
         일반 torch.Tensor면 soundfile로 먼저 저장하고 실패 시 torchaudio로 폴백한다.
         """
-        if all(hasattr(waveform, attr) for attr in ('detach', 'cpu', 'transpose', 'numpy')):
+        if all(
+            hasattr(waveform, attr) for attr in ('detach', 'cpu', 'transpose', 'numpy')
+        ):
             try:
+                import numpy as np
                 import soundfile as sf
 
                 audio = waveform.detach().cpu().transpose(0, 1).numpy()
+                audio = ZonosEngine._trim_leading_silence(
+                    audio=audio,
+                    sampling_rate=sampling_rate,
+                    np=np,
+                )
                 sf.write(str(out_path), audio, sampling_rate)
                 return
             except Exception:
@@ -242,17 +361,95 @@ class ZonosEngine(BaseTTS):
         torchaudio.save(str(out_path), waveform, sampling_rate)
 
     @staticmethod
-    def _resolve_speaker_audio(voice_preset: str) -> Path | None:
-        """voice_preset이 실제 파일 경로면 speaker audio로 사용한다."""
+    def _trim_leading_silence(audio, sampling_rate: int, np):
+        """
+        선행 무음을 제거하되, 시작 직후 짧은 아티팩트 후 긴 무음이 오면
+        다음 실제 발화 시작점으로 넘긴다.
+        """
+        if audio.ndim == 1:
+            mono = np.abs(audio)
+        else:
+            mono = np.mean(np.abs(audio), axis=1)
+
+        frame_size = max(1, int(sampling_rate * 0.02))
+        lookback_frames = 1
+        min_active_frames = 8
+        long_silence_frames = 25
+        rms_threshold = 0.01
+
+        frame_starts = list(range(0, max(1, len(mono) - frame_size + 1), frame_size))
+        rms_frames = np.array(
+            [
+                np.sqrt(np.mean(mono[start : start + frame_size] ** 2))
+                for start in frame_starts
+            ],
+            dtype='float32',
+        )
+        active = rms_frames >= rms_threshold
+
+        runs: list[tuple[int, int]] = []
+        idx = 0
+        while idx < len(active):
+            if not active[idx]:
+                idx += 1
+                continue
+            start = idx
+            while idx < len(active) and active[idx]:
+                idx += 1
+            end = idx
+            if end - start >= min_active_frames:
+                runs.append((start, end))
+
+        if not runs:
+            return audio
+
+        target_start = runs[0][0]
+        if len(runs) >= 2:
+            first_end = runs[0][1]
+            next_start = runs[1][0]
+            if (
+                runs[0][0] <= lookback_frames
+                and next_start - first_end >= long_silence_frames
+            ):
+                target_start = next_start
+
+        sample_start = max(0, (target_start - lookback_frames) * frame_size)
+        if sample_start == 0:
+            return audio
+
+        trimmed = audio[sample_start:]
+        logger.info(
+            '[tts:zonos] trimmed leading silence %.2fs -> %.2fs',
+            sample_start / sampling_rate,
+            len(trimmed) / sampling_rate,
+        )
+        return trimmed
+
+    @staticmethod
+    def _resolve_speaker_source(voice_preset: str) -> Path | None:
+        """voice_preset이 실제 파일 경로나 저장된 이름이면 speaker source로 사용한다."""
         if not voice_preset or voice_preset == _DEFAULT_PRESET:
             return None
 
         path = Path(voice_preset).expanduser()
         if not path.is_file():
+            normalized_name = ZonosEngine._normalize_voice_name(voice_preset)
+            library_path = ZONOS_EMBEDDINGS_DIR / f'{normalized_name}.pt'
+            if library_path.is_file():
+                return library_path
             raise TTSGenerationError(
-                f'Zonos 화자 클로닝용 참조 오디오를 찾을 수 없습니다: {voice_preset}'
+                f'Zonos 화자 클로닝용 speaker source를 찾을 수 없습니다: {voice_preset}'
             )
         return path
+
+    @staticmethod
+    def _normalize_voice_name(voice_name: str) -> str:
+        """보이스 이름을 파일명으로 안전하게 정규화한다."""
+        normalized = re.sub(r'[^A-Za-z0-9._-]+', '_', voice_name.strip())
+        normalized = normalized.strip('._')
+        if not normalized:
+            raise TTSGenerationError('보이스 이름이 비어 있습니다.')
+        return normalized
 
     @staticmethod
     def _resolve_device() -> str:
@@ -308,7 +505,9 @@ class ZonosEngine(BaseTTS):
     @staticmethod
     def _has_espeak() -> bool:
         """eSpeak 또는 eSpeak NG 실행 파일 존재 여부 확인."""
-        return shutil.which('espeak-ng') is not None or shutil.which('espeak') is not None
+        return (
+            shutil.which('espeak-ng') is not None or shutil.which('espeak') is not None
+        )
 
     @staticmethod
     def _find_spec_safe(module_name: str):
