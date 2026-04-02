@@ -45,6 +45,7 @@ class InputPayload:
     file_name: str
     content: bytes
     question: str | None = None  # 질의응답용 질문 텍스트
+    context_text: str | None = None  # QUESTION 입력에서 사용할 본문 컨텍스트
     voice_preset: str = 'default'  # TTS 목소리 프리셋
 
 

@@ -70,6 +70,8 @@ class ReadingPipeline:
         warnings: list[str] = []
 
         try:
+            task = self._resolve_task(payload)
+
             # ── 1. 텍스트 추출 ──────────────────────────────
             extracted_text, ocr_engine, stt_engine = self._extract_text(
                 payload, warnings
@@ -83,7 +85,6 @@ class ReadingPipeline:
                 )
 
             # ── 2. LLM 분석 ─────────────────────────────────
-            task = TaskType.QA if payload.question else TaskType.SUMMARIZE
             llm_result = self._run_llm(extracted_text, task, payload.question, warnings)
 
             # ── 3. TTS 합성 ─────────────────────────────────
@@ -108,6 +109,17 @@ class ReadingPipeline:
                 warnings=[f'파이프라인 오류: {e}'],
             )
 
+    @staticmethod
+    def _resolve_task(payload: InputPayload) -> TaskType:
+        """입력 payload를 기준으로 파이프라인 태스크를 결정한다."""
+        if payload.input_type is InputType.QUESTION:
+            if not payload.question or not payload.question.strip():
+                raise ValueError('QUESTION 입력에는 question이 필요합니다.')
+            if not payload.context_text or not payload.context_text.strip():
+                raise ValueError('QUESTION 입력에는 context_text가 필요합니다.')
+            return TaskType.QA
+        return TaskType.QA if payload.question else TaskType.SUMMARIZE
+
     # ─────────────────────────────────────────────────────────
     # 텍스트 추출 분기
     # ─────────────────────────────────────────────────────────
@@ -131,8 +143,8 @@ class ReadingPipeline:
             case InputType.AUDIO:
                 return self._run_audio(payload.content, warnings)
             case InputType.QUESTION:
-                # 질문만 있는 경우: 텍스트 추출 없이 QA로 진행
-                return payload.question or '', None, None
+                # 질문 전용 입력은 별도의 컨텍스트 본문이 필요하다.
+                return payload.context_text or '', None, None
             case _:
                 raise ValueError(f'지원하지 않는 입력 타입: {payload.input_type}')
 

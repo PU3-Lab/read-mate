@@ -67,8 +67,12 @@ class PyPDFEngine(BasePDF):
 
         if len(text.strip()) < PDF_MIN_CHARS:
             logger.info('[pdf] 스캔형 판별 → OCR 분기')
-            text = self._ocr_all_pages(pdf_bytes, page_count)
-            return PDFResult(text=text, page_count=page_count, is_scanned=True)
+            ocr_text = self._ocr_all_pages(pdf_bytes, page_count)
+            if ocr_text.strip():
+                return PDFResult(text=ocr_text, page_count=page_count, is_scanned=True)
+
+            logger.warning('[pdf] OCR 폴백 실패 → 기존 pypdf 추출 결과 유지')
+            return PDFResult(text=text, page_count=page_count, is_scanned=False)
 
         return PDFResult(text=text, page_count=page_count, is_scanned=False)
 

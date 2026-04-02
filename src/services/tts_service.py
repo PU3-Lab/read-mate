@@ -1,214 +1,48 @@
 """
-ReadMate TTS 서비스 구현체.
-- XTTSEngine:      XTTS v2 기반 로컬 TTS 엔진 (싱글톤 모델)
-- ElevenLabsTTS:   ElevenLabs API 폴백 엔진
+TTS 서비스.
+TTSFactory를 통해 엔진을 가져와 합성·프리셋 조회를 제공한다.
 """
 
 from __future__ import annotations
 
-import logging
-import time
-import uuid
-
-import requests
-from TTS.api import TTS
-
-from core.config import ELEVENLABS_API_KEY, TMP_DIR, TTS_MODEL
-from core.exceptions import TTSGenerationError
-from lib.utils.device import available_device
 from models.schemas import TTSResult
 from services.base import BaseTTS
-
-logger = logging.getLogger(__name__)
-
-# 프리셋 목소리 목록 (XTTS v2 기본 제공 화자)
-XTTS_PRESETS: list[str] = [
-    'Claribel Dervla',
-    'Daisy Studious',
-    'Gracie Wise',
-    'Tammie Ema',
-    'Alison Dietlinde',
-    'Ana Florence',
-    'Annmarie Nele',
-    'Asya Anara',
-    'Brenda Stern',
-    'Gitta Nikolina',
-]
-
-DEFAULT_PRESET = XTTS_PRESETS[0]
+from services.tts_factory import EngineType, TTSFactory
 
 
-# ─────────────────────────────────────────
-# XTTS v2 로컬 엔진
-# ─────────────────────────────────────────
-
-
-class XTTSEngine(BaseTTS):
+class TTSService:
     """
-    XTTS v2 기반 로컬 TTS 엔진.
-    모델은 싱글톤으로 유지한다.
-    긴 텍스트는 문장 단위로 청킹 후 합성한다.
+    TTS 서비스.
+    engine으로 사용할 엔진을 지정한다.
+
+    지원 엔진:
+        'kokoro'     - Kokoro ONNX 로컬 (영어 화자, 한국어 텍스트 처리 불완전)
+        'mms'        - Meta MMS-TTS 로컬 (한국어 전용, 단일 화자)
+        'edge'       - Microsoft Edge TTS (한국어 최상급 품질, 인터넷 필요)
+        'elevenlabs' - ElevenLabs API (다국어, API 키 필요)
     """
 
-    _instance: XTTSEngine | None = None
-    _model = None
+    def __init__(self, engine: EngineType = 'mms') -> None:
+        self._engine: BaseTTS = TTSFactory().get(engine)
 
-    def __new__(cls) -> XTTSEngine:
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-        return cls._instance
-
-    def __init__(self) -> None:
-        if self._model is not None:
-            return
-        device = available_device()
-        logger.info('[tts] XTTS v2 loading device=%s', device)
-        self._tts = TTS(model_name=TTS_MODEL).to(device)
-        self._model = True  # 로드 완료 플래그
-
-    def synthesize(self, text: str, voice_preset: str = DEFAULT_PRESET) -> TTSResult:
+    def synthesize(self, text: str, voice_preset: str = '') -> TTSResult:
         """
-        텍스트를 XTTS v2로 음성 합성한다.
+        텍스트를 음성으로 합성한다.
 
         Args:
             text: 읽어줄 텍스트
-            voice_preset: 프리셋 목소리 이름
+            voice_preset: 목소리 프리셋 이름 (빈 문자열이면 엔진 기본값 사용)
 
         Returns:
             TTSResult: 오디오 파일 경로, 목소리, 엔진명, 재생 시간
-
-        Raises:
-            TTSGenerationError: 합성 실패 시
         """
-        if not text.strip():
-            raise TTSGenerationError('TTS 입력 텍스트가 비어 있습니다.')
-
-        speaker = voice_preset if voice_preset in XTTS_PRESETS else DEFAULT_PRESET
-        out_path = TMP_DIR / f'{uuid.uuid4().hex}.wav'
-
-        try:
-            t0 = time.perf_counter()
-            self._tts.tts_to_file(
-                text=text,
-                speaker=speaker,
-                language='ko',
-                file_path=str(out_path),
-            )
-            duration = time.perf_counter() - t0
-        except Exception as exc:
-            raise TTSGenerationError(f'XTTS v2 합성 실패: {exc}') from exc
-
-        logger.info(
-            '[tts:xtts] voice=%s chars=%d elapsed=%.2fs',
-            speaker,
-            len(text),
-            duration,
-        )
-        return TTSResult(
-            audio_path=str(out_path),
-            voice_preset=speaker,
-            engine='xtts_v2',
-            duration_sec=round(duration, 2),
-        )
+        return self._engine.synthesize(text, voice_preset)
 
     def list_presets(self) -> list[str]:
-        """사용 가능한 XTTS v2 프리셋 목소리 목록 반환."""
-        return XTTS_PRESETS.copy()
+        """사용 가능한 목소리 프리셋 목록 반환."""
+        return self._engine.list_presets()
 
-
-# ─────────────────────────────────────────
-# ElevenLabs API 폴백 엔진
-# ─────────────────────────────────────────
-
-# ElevenLabs 프리셋 목소리 ID 매핑
-ELEVENLABS_VOICES: dict[str, str] = {
-    'Rachel': '21m00Tcm4TlvDq8ikWAM',
-    'Domi': 'AZnzlk1XvdvUeBnXmlld',
-    'Bella': 'EXAVITQu4vr4xnSDxMaL',
-    'Antoni': 'ErXwobaYiN019PkySvjV',
-    'Elli': 'MF3mGyEYCl7XYWbV9V6O',
-}
-ELEVENLABS_DEFAULT_VOICE = 'Rachel'
-ELEVENLABS_MODEL = 'eleven_multilingual_v2'
-
-
-class ElevenLabsTTS(BaseTTS):
-    """ElevenLabs Eleven Multilingual v2 API 폴백 TTS 엔진."""
-
-    def __init__(self, api_key: str = ELEVENLABS_API_KEY) -> None:
-        """
-        ElevenLabs TTS 엔진을 초기화한다.
-
-        Args:
-            api_key: ElevenLabs API 키
-
-        Raises:
-            ValueError: API 키 미설정 시
-        """
-        if not api_key:
-            raise ValueError('ELEVENLABS_API_KEY가 .env에 설정되어 있지 않습니다.')
-        self.api_key = api_key
-
-    def synthesize(
-        self, text: str, voice_preset: str = ELEVENLABS_DEFAULT_VOICE
-    ) -> TTSResult:
-        """
-        텍스트를 ElevenLabs API로 음성 합성한다.
-
-        Args:
-            text: 읽어줄 텍스트
-            voice_preset: 프리셋 목소리 이름
-
-        Returns:
-            TTSResult: 오디오 파일 경로, 목소리, 엔진명, 재생 시간
-
-        Raises:
-            TTSGenerationError: API 호출 실패 시
-        """
-        if not text.strip():
-            raise TTSGenerationError('TTS 입력 텍스트가 비어 있습니다.')
-
-        voice_id = ELEVENLABS_VOICES.get(
-            voice_preset, ELEVENLABS_VOICES[ELEVENLABS_DEFAULT_VOICE]
-        )
-        url = f'https://api.elevenlabs.io/v1/text-to-speech/{voice_id}'
-
-        try:
-            t0 = time.perf_counter()
-            response = requests.post(
-                url,
-                headers={
-                    'xi-api-key': self.api_key,
-                    'Content-Type': 'application/json',
-                },
-                json={
-                    'text': text,
-                    'model_id': ELEVENLABS_MODEL,
-                    'voice_settings': {'stability': 0.5, 'similarity_boost': 0.75},
-                },
-                timeout=60,
-            )
-            response.raise_for_status()
-            duration = time.perf_counter() - t0
-        except Exception as exc:
-            raise TTSGenerationError(f'ElevenLabs API 호출 실패: {exc}') from exc
-
-        out_path = TMP_DIR / f'{uuid.uuid4().hex}.mp3'
-        out_path.write_bytes(response.content)
-
-        logger.info(
-            '[tts:elevenlabs] voice=%s chars=%d elapsed=%.2fs',
-            voice_preset,
-            len(text),
-            duration,
-        )
-        return TTSResult(
-            audio_path=str(out_path),
-            voice_preset=voice_preset,
-            engine='elevenlabs/eleven_multilingual_v2',
-            duration_sec=round(duration, 2),
-        )
-
-    def list_presets(self) -> list[str]:
-        """사용 가능한 ElevenLabs 프리셋 목소리 목록 반환."""
-        return list(ELEVENLABS_VOICES.keys())
+    @staticmethod
+    def available_engines() -> list[str]:
+        """사용 가능한 엔진 이름 목록 반환."""
+        return TTSFactory.available()

@@ -49,7 +49,7 @@ LLM_MODEL_API: str = 'gpt-4.1-mini'
 
 STT_MODEL: str = 'large-v3'  # faster-whisper 모델 크기
 
-TTS_MODEL: str = 'tts_models/multilingual/multi-dataset/xtts_v2'
+TTS_MODEL: str = 'hexgrad/Kokoro-82M'  # kokoro-onnx HuggingFace repo
 
 # ─────────────────────────────────────────
 # 파이프라인 임계값

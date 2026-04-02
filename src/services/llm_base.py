@@ -91,7 +91,7 @@ class ChunkedLLM(BaseLLM):
             return [text]
 
         chunks: list[str] = []
-        step = self.max_input_chars - CHUNK_OVERLAP
+        step = max(self.max_input_chars - CHUNK_OVERLAP, 1)
         start = 0
         while start < len(text):
             chunks.append(text[start : start + self.max_input_chars])
@@ -112,6 +112,16 @@ class ChunkedLLM(BaseLLM):
         Returns:
             LLMResult: 최종 병합된 결과
         """
+        if task is TaskType.QA and question:
+            target_chunks = self._select_relevant_chunks(chunks, question)
+            logger.info(
+                '[llm] QA relevant chunks selected: %d/%d',
+                len(target_chunks),
+                len(chunks),
+            )
+            merged_text = '\n\n'.join(target_chunks)
+            return self._generate_single(merged_text, task, question)
+
         chunk_results: list[LLMResult] = []
         for i, chunk in enumerate(chunks):
             logger.info('[llm] processing chunk %d/%d', i + 1, len(chunks))
@@ -135,3 +145,38 @@ class ChunkedLLM(BaseLLM):
             quiz=final_result.quiz,
             engine=final_result.engine,
         )
+
+    def _select_relevant_chunks(self, chunks: list[str], question: str) -> list[str]:
+        """
+        질문과 겹치는 토큰이 많은 원문 청크를 우선 선택한다.
+        긴 문서 QA에서 요약본 대신 원문 근거를 보존하기 위한 처리다.
+        """
+        question_tokens = self._tokenize(question)
+        if not question_tokens:
+            return chunks[: min(3, len(chunks))]
+
+        scored_chunks = [
+            (self._score_chunk_relevance(chunk, question_tokens), index, chunk)
+            for index, chunk in enumerate(chunks)
+        ]
+        scored_chunks.sort(key=lambda item: (-item[0], item[1]))
+
+        top_chunks = [chunk for score, _, chunk in scored_chunks if score > 0][:3]
+        if top_chunks:
+            return top_chunks
+
+        return chunks[: min(3, len(chunks))]
+
+    @staticmethod
+    def _tokenize(text: str) -> set[str]:
+        """한글/영문/숫자 기준의 간단한 토큰 집합 생성."""
+        return {
+            token
+            for token in re.findall(r'[가-힣A-Za-z0-9]+', text.lower())
+            if len(token) > 1
+        }
+
+    def _score_chunk_relevance(self, chunk: str, question_tokens: set[str]) -> int:
+        """질문 토큰과 청크 토큰의 단순 겹침 점수 계산."""
+        chunk_tokens = self._tokenize(chunk)
+        return len(question_tokens & chunk_tokens)
