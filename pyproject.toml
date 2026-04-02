@@ -33,6 +33,8 @@ dependencies = [
     "uvicorn>=0.41.0",
     "python-multipart>=0.0.22",    # 파일 업로드
     "jupyter>=1.1.1",
+    "openai-whisper>=20250625",
+    "yt-dlp>=2026.3.17",
 ]
 
 [build-system]
@@ -93,6 +95,11 @@ ignore = [
 quote-style = "single"
 indent-style = "space"
 line-ending = "auto"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+]
 
 [tool.ruff.lint.per-file-ignores]
 "*.py" = ["ANN", "INP001"]
