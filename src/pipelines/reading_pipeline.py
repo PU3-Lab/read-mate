@@ -37,7 +37,7 @@ class ReadingPipeline:
             ocr=PaddleOCREngine(),
             pdf=PyPDFEngine(ocr_fallback=PaddleOCREngine()),
             stt=FasterWhisperEngine(),
-            llm=QwenLLM(),
+            llm=GemmaLLM(),
             tts=XTTSEngine(),
         )
         result = pipeline.run(payload)

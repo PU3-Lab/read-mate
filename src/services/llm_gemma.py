@@ -1,5 +1,5 @@
 """
-ReadMate용 Qwen 기반 LLM 서비스 구현체.
+ReadMate용 Gemma 기반 LLM 서비스 구현체.
 요약과 질의응답을 JSON 포맷으로 강제하고, 파싱 실패 시 재시도한다.
 """
 
@@ -11,35 +11,36 @@ import re
 from typing import Any
 
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoProcessor, Gemma3ForConditionalGeneration
 
+from core.config import (
+    LLM_MAX_INPUT_CHARS,
+    LLM_MAX_NEW_TOKENS,
+    LLM_MAX_RETRIES,
+    LLM_MODEL_DEFAULT,
+)
 from lib.utils.device import available_device
 from models.schemas import LLMResult, QuizItem, TaskType
 from services.llm_base import ChunkedLLM
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_MODEL_NAME = 'Qwen/Qwen2.5-7B-Instruct'
-MAX_RETRIES = 3
-MAX_INPUT_CHARS = 12000
-MAX_NEW_TOKENS = 768
 
+class GemmaLLM(ChunkedLLM):
+    """Gemma 기반 ReadMate LLM 서비스."""
 
-class QwenLLM(ChunkedLLM):
-    """Qwen2.5 기반 ReadMate LLM 서비스."""
-
-    _shared_model: AutoModelForCausalLM | None = None
-    _shared_tokenizer: AutoTokenizer | None = None
+    _shared_model: Gemma3ForConditionalGeneration | None = None
+    _shared_processor = None
     _shared_model_name: str | None = None
 
     def __init__(
         self,
-        model_name: str = DEFAULT_MODEL_NAME,
-        max_input_chars: int = MAX_INPUT_CHARS,
-        max_new_tokens: int = MAX_NEW_TOKENS,
+        model_name: str = LLM_MODEL_DEFAULT,
+        max_input_chars: int = LLM_MAX_INPUT_CHARS,
+        max_new_tokens: int = LLM_MAX_NEW_TOKENS,
     ) -> None:
         """
-        Qwen LLM 서비스를 초기화한다.
+        Gemma LLM 서비스를 초기화한다.
 
         Args:
             model_name: Hugging Face 모델 이름 또는 로컬 경로
@@ -51,7 +52,7 @@ class QwenLLM(ChunkedLLM):
         self.max_new_tokens = max_new_tokens
         self.device = available_device()
         self.dtype = self._resolve_dtype(self.device)
-        self.tokenizer, self.model = self._get_or_load_model()
+        self.processor, self.model = self._get_or_load_model()
 
     def _generate_single(
         self, text: str, task: TaskType, question: str | None
@@ -69,7 +70,7 @@ class QwenLLM(ChunkedLLM):
         """
         normalized_text = text[: self.max_input_chars]
         last_error: Exception | None = None
-        for attempt in range(1, MAX_RETRIES + 1):
+        for attempt in range(1, LLM_MAX_RETRIES + 1):
             try:
                 prompt = self._build_prompt(
                     text=normalized_text,
@@ -83,13 +84,13 @@ class QwenLLM(ChunkedLLM):
             except Exception as exc:
                 last_error = exc
                 logger.warning(
-                    '[llm] parse/inference retry=%s/%s failed: %s',
+                    '[llm:gemma] parse/inference retry=%s/%s failed: %s',
                     attempt,
-                    MAX_RETRIES,
+                    LLM_MAX_RETRIES,
                     exc,
                 )
 
-        logger.error('[llm] all retries failed: %s', last_error)
+        logger.error('[llm:gemma] all retries failed: %s', last_error)
         return self._build_fallback_result(task, question)
 
     @classmethod
@@ -109,34 +110,32 @@ class QwenLLM(ChunkedLLM):
 
     def _get_or_load_model(
         self,
-    ) -> tuple[AutoTokenizer, AutoModelForCausalLM]:
+    ) -> tuple[Any, Gemma3ForConditionalGeneration]:
         """
-        토크나이저와 모델을 싱글톤으로 로드한다.
+        프로세서와 모델을 싱글톤으로 로드한다.
 
         Returns:
-            tuple[AutoTokenizer, AutoModelForCausalLM]: 재사용 가능한 모델 객체
+            tuple[Any, Gemma3ForConditionalGeneration]: 재사용 가능한 모델 객체
         """
         if (
             self.__class__._shared_model is not None
-            and self.__class__._shared_tokenizer is not None
+            and self.__class__._shared_processor is not None
             and self.__class__._shared_model_name == self.model_name
         ):
-            return self.__class__._shared_tokenizer, self.__class__._shared_model
+            return self.__class__._shared_processor, self.__class__._shared_model
 
         logger.info(
-            '[llm] loading model=%s device=%s dtype=%s',
+            '[llm:gemma] loading model=%s device=%s dtype=%s',
             self.model_name,
             self.device,
             self.dtype,
         )
 
-        tokenizer = AutoTokenizer.from_pretrained(
+        processor = AutoProcessor.from_pretrained(
             self.model_name,
             trust_remote_code=True,
         )
-        if tokenizer.pad_token_id is None:
-            tokenizer.pad_token = tokenizer.eos_token
-        model = AutoModelForCausalLM.from_pretrained(
+        model = Gemma3ForConditionalGeneration.from_pretrained(
             self.model_name,
             torch_dtype=self.dtype,
             trust_remote_code=True,
@@ -144,10 +143,10 @@ class QwenLLM(ChunkedLLM):
         model.to(self.device)
         model.eval()
 
-        self.__class__._shared_tokenizer = tokenizer
+        self.__class__._shared_processor = processor
         self.__class__._shared_model = model
         self.__class__._shared_model_name = self.model_name
-        return tokenizer, model
+        return processor, model
 
     def _build_prompt(
         self,
@@ -224,34 +223,39 @@ class QwenLLM(ChunkedLLM):
         messages = [
             {
                 'role': 'system',
-                'content': '당신은 JSON만 반환하는 정확한 도우미입니다.',
+                'content': [
+                    {
+                        'type': 'text',
+                        'text': '당신은 JSON만 반환하는 정확한 도우미입니다.',
+                    }
+                ],
             },
-            {'role': 'user', 'content': prompt},
+            {'role': 'user', 'content': [{'type': 'text', 'text': prompt}]},
         ]
-        model_input = self.tokenizer.apply_chat_template(
+        encoded = self.processor.apply_chat_template(
             messages,
-            tokenize=False,
+            tokenize=True,
             add_generation_prompt=True,
-        )
-        encoded = self.tokenizer(
-            model_input,
+            return_dict=True,
             return_tensors='pt',
         )
         encoded = {key: value.to(self.device) for key, value in encoded.items()}
+        input_len = encoded['input_ids'].shape[-1]
 
         with torch.inference_mode():
             output = self.model.generate(
                 **encoded,
                 max_new_tokens=self.max_new_tokens,
                 do_sample=False,
-                temperature=None,
-                top_p=None,
-                pad_token_id=self.tokenizer.eos_token_id,
-                eos_token_id=self.tokenizer.eos_token_id,
+                pad_token_id=self.processor.tokenizer.eos_token_id,
+                eos_token_id=self.processor.tokenizer.eos_token_id,
             )
 
-        generated_tokens = output[0][encoded['input_ids'].shape[1] :]
-        return self.tokenizer.decode(generated_tokens, skip_special_tokens=True).strip()
+        generated_tokens = output[0][input_len:]
+        return self.processor.decode(
+            generated_tokens,
+            skip_special_tokens=True,
+        ).strip()
 
     def _parse_json_output(self, raw_output: str) -> dict[str, Any]:
         """
