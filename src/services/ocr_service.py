@@ -18,9 +18,9 @@ from transformers import (
     Qwen2_5_VLForConditionalGeneration,
 )
 
-from src.lib.utils.device import available_device
-from src.models.schemas import OCRBox, OCRResult
-from src.services.base import BaseOCR
+from lib.utils.device import available_device
+from models.schemas import OCRBox, OCRResult
+from services.base import BaseOCR
 
 logger = logging.getLogger(__name__)
 

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from src.models.schemas import (
+from models.schemas import (
     LLMResult,
     OCRResult,
     PDFResult,
@@ -51,6 +51,7 @@ class BasePDF(ABC):
             PDFResult: 추출 텍스트, 페이지 수, 스캔형 여부
         """
         ...
+
 
 class BaseSTT(ABC):
     """STT 엔진 인터페이스."""

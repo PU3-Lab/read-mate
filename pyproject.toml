@@ -14,9 +14,9 @@ dependencies = [
     "accelerate>=0.30.0",          # 모델 로딩 최적화 (MPS 포함)
     "sentencepiece>=0.2.0",        # Qwen2.5 토크나이저
     "huggingface-hub>=1.7.1",      # 모델 다운로드 관리
-    "torch>=2.10.0 ; sys_platform == 'win32'",
-    "torchvision>=0.25.0 ; sys_platform == 'win32'",
-    "torchaudio>=2.10.0 ; sys_platform == 'win32'",
+    "torch>=2.10.0",
+    "torchvision>=0.25.0",
+    "torchaudio>=2.10.0",
     "pypdf>=5.0.0",                  # 텍스트형 PDF 본문 추출
     "pdf2image>=1.17.0",             # 스캔형 PDF 페이지 래스터화 (Poppler 의존)
     "faster-whisper>=1.0.0",        # 로컬 STT (녹음 파일 → 텍스트)
