@@ -2,7 +2,7 @@ import io
 
 from pdf2image import convert_from_bytes
 
-from src.services.ocr_service import Qwen2VLEngine
+from services.ocr_service import Qwen2VLEngine
 
 ocr = Qwen2VLEngine()
 
