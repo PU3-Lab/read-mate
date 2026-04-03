@@ -35,6 +35,8 @@ dependencies = [
     "jupyter>=1.1.1",
     "openai-whisper>=20250625",
     "yt-dlp>=2026.3.17",
+    "zonos>=0.1.0.dev0",
+    "zyphra>=0.1.6",
 ]
 
 [build-system]
