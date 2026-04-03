@@ -33,10 +33,13 @@ def check_voice(text: str = None, voice_preset: str = None):
         print(f'저장 위치: {audio_path}')
         print(f'재생 시간: {result.duration_sec}초')
 
-        # macOS에서 자동으로 파일 열기/재생 시도 (사용자 편의)
+        # 운영체제별 기본 플레이어로 자동 재생 시도
         if sys.platform == 'darwin':
             print('\n시스템 기본 플레이어로 재생합니다...')
             subprocess.run(['open', audio_path], check=False)
+        elif sys.platform == 'win32':
+            print('\n시스템 기본 플레이어로 재생합니다...')
+            os.startfile(audio_path)
         else:
             print(f'\n파일을 직접 열어서 확인해 주세요: {audio_path}')
 

@@ -57,16 +57,50 @@ import os
 import re
 import sys
 import unicodedata
+from pathlib import Path
 
 import inflect
 import torch
 import torch.nn as nn
 from kanjize import number2kanji
 from phonemizer.backend import EspeakBackend
+from phonemizer.backend.espeak.wrapper import EspeakWrapper
 from sudachipy import Dictionary, SplitMode
 
 if sys.platform == 'darwin':
     os.environ['PHONEMIZER_ESPEAK_LIBRARY'] = '/opt/homebrew/lib/libespeak-ng.dylib'
+
+
+def _configure_espeak_library() -> None:
+    """운영체제별 eSpeak NG 라이브러리 경로를 phonemizer에 지정한다."""
+    if sys.platform != 'win32':
+        return
+
+    candidate_paths = [
+        Path(os.environ['PHONEMIZER_ESPEAK_LIBRARY'])
+        for _ in [0]
+        if os.environ.get('PHONEMIZER_ESPEAK_LIBRARY')
+    ]
+    candidate_paths.extend(
+        [
+            Path(r'C:\Program Files\eSpeak NG\libespeak-ng.dll'),
+            Path(r'C:\Program Files (x86)\eSpeak NG\libespeak-ng.dll'),
+        ]
+    )
+
+    for library_path in candidate_paths:
+        if not library_path.is_file():
+            continue
+
+        os.environ['PHONEMIZER_ESPEAK_LIBRARY'] = str(library_path)
+        os.environ['PATH'] = (
+            f'{library_path.parent}{os.pathsep}{os.environ.get("PATH", "")}'
+        )
+        EspeakWrapper.set_library(str(library_path))
+        return
+
+
+_configure_espeak_library()
 
 # --- Number normalization code from https://github.com/daniilrobnikov/vits2/blob/main/text/normalize_numbers.py ---
 
