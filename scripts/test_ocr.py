@@ -6,7 +6,7 @@ from src.services.ocr_service import Qwen2VLEngine
 
 ocr = Qwen2VLEngine()
 
-with open('notebooks/hyunwook/test1_2.pdf', 'rb') as f:
+with open('notebooks/hyunwook/주제_문제제기 pt.pdf', 'rb') as f:
     pdf_bytes = f.read()
 
 POPPLER_PATH = r'C:\Release-25.12.0-0\poppler-25.12.0\Library\bin'
