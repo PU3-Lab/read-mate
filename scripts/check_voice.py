@@ -9,7 +9,23 @@ import sys
 from services.tts_zonos import ZonosTTSEngine
 
 
-def check_voice(text: str = None, voice_preset: str = None):
+def _play_audio(audio_path: str) -> None:
+    """운영체제별 기본 플레이어로 오디오를 재생한다."""
+    if sys.platform == 'darwin':
+        print('\n시스템 기본 플레이어로 재생합니다...')
+        subprocess.run(['open', audio_path], check=False)
+    elif sys.platform == 'win32':
+        print('\n시스템 기본 플레이어로 재생합니다...')
+        os.startfile(audio_path)
+    else:
+        print(f'\n파일을 직접 열어서 확인해 주세요: {audio_path}')
+
+
+def check_voice(
+    text: str = None,
+    voice_preset: str = None,
+    stream: bool = False,
+):
     """
     텍스트를 입력받아 음성을 생성하고 확인한다.
     """
@@ -26,22 +42,25 @@ def check_voice(text: str = None, voice_preset: str = None):
         engine = ZonosTTSEngine()
 
         print('음성 합성 중...')
-        result = engine.synthesize(text, voice_preset=voice_preset or 'default')
-
-        audio_path = result.audio_path
-        print('\n✅ 음성 생성 성공!')
-        print(f'저장 위치: {audio_path}')
-        print(f'재생 시간: {result.duration_sec}초')
-
-        # 운영체제별 기본 플레이어로 자동 재생 시도
-        if sys.platform == 'darwin':
-            print('\n시스템 기본 플레이어로 재생합니다...')
-            subprocess.run(['open', audio_path], check=False)
-        elif sys.platform == 'win32':
-            print('\n시스템 기본 플레이어로 재생합니다...')
-            os.startfile(audio_path)
+        if stream:
+            print('스트리밍 모드로 청크별 생성합니다...')
+            for index, result in enumerate(
+                engine.synthesize_stream(text, voice_preset=voice_preset or 'default'),
+                start=1,
+            ):
+                audio_path = result.audio_path
+                print(f'\n✅ 청크 {index} 생성 성공!')
+                print(f'저장 위치: {audio_path}')
+                print(f'재생 시간: {result.duration_sec}초')
+                _play_audio(audio_path)
         else:
-            print(f'\n파일을 직접 열어서 확인해 주세요: {audio_path}')
+            result = engine.synthesize(text, voice_preset=voice_preset or 'default')
+
+            audio_path = result.audio_path
+            print('\n✅ 음성 생성 성공!')
+            print(f'저장 위치: {audio_path}')
+            print(f'재생 시간: {result.duration_sec}초')
+            _play_audio(audio_path)
 
     except Exception as e:
         print(f'\n❌ 오류 발생: {e}')
@@ -49,8 +68,10 @@ def check_voice(text: str = None, voice_preset: str = None):
 
 if __name__ == '__main__':
     # 실행 시 인자로 텍스트를 받을 수도 있음
-    # 예: uv run scripts/check_voice.py "원하는 문구" "참조_목소리.wav"
-    input_text = sys.argv[1] if len(sys.argv) > 1 else None
-    preset = sys.argv[2] if len(sys.argv) > 2 else None
+    # 예: uv run scripts/check_voice.py "원하는 문구" "참조_목소리.wav" --stream
+    args = [arg for arg in sys.argv[1:] if arg != '--stream']
+    input_text = args[0] if len(args) > 0 else None
+    preset = args[1] if len(args) > 1 else None
+    stream_mode = '--stream' in sys.argv[1:]
 
-    check_voice(input_text, preset)
+    check_voice(input_text, preset, stream=stream_mode)

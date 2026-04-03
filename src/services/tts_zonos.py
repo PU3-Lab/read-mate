@@ -11,9 +11,11 @@ import re
 import shutil
 import sys
 import time
+from collections.abc import Iterator
 from datetime import datetime
 from pathlib import Path
 
+import numpy as np
 import soundfile as sf
 import torch
 
@@ -89,13 +91,233 @@ class ZonosTTSEngine(BaseTTS):
 
     def _build_output_path(self, voice_preset: str) -> Path:
         """화자명과 날짜시간 기반의 출력 파일 경로를 생성한다."""
+        return self._build_output_path_with_suffix(voice_preset)
+
+    def _build_output_path_with_suffix(
+        self,
+        voice_preset: str,
+        suffix: str = '',
+        timestamp: str | None = None,
+    ) -> Path:
+        """화자명과 날짜시간, 추가 suffix 기반의 출력 파일 경로를 생성한다."""
         voice_name = Path(voice_preset).stem if voice_preset else 'default'
         voice_name = re.sub(r'[^A-Za-z0-9_-]+', '_', voice_name).strip('_')
         if not voice_name:
             voice_name = 'default'
 
+        timestamp = timestamp or datetime.now().strftime('%Y%m%d_%H%M%S')
+        suffix_part = f'_{suffix}' if suffix else ''
+        return TMP_DIR / f'{voice_name}_{timestamp}{suffix_part}.wav'
+
+    def _split_text(self, text: str, language: str) -> list[str]:
+        """긴 텍스트를 문장부호 우선으로 안정적으로 분할한다."""
+        compact_text = re.sub(r'\s+', ' ', text).strip()
+        if not compact_text:
+            return []
+
+        soft_limit = 80 if language == 'ko' else 160
+        hard_limit = 120 if language == 'ko' else 220
+        clause_parts = re.findall(r'[^,;:.!?。！？]+[,;:.!?。！？]?', compact_text)
+        clause_parts = [part.strip() for part in clause_parts if part.strip()]
+        if not clause_parts:
+            clause_parts = [compact_text]
+
+        chunks: list[str] = []
+        current = ''
+        for part in clause_parts:
+            candidate = f'{current} {part}'.strip() if current else part
+            if len(candidate) <= soft_limit:
+                current = candidate
+                continue
+
+            if current:
+                chunks.append(current)
+                current = ''
+
+            if len(part) <= hard_limit:
+                current = part
+                continue
+
+            words = part.split()
+            buffer = ''
+            for word in words:
+                candidate = f'{buffer} {word}'.strip() if buffer else word
+                if len(candidate) <= soft_limit:
+                    buffer = candidate
+                    continue
+                if buffer:
+                    chunks.append(buffer)
+                buffer = word
+            if buffer:
+                current = buffer
+
+        if current:
+            chunks.append(current)
+
+        return chunks or [compact_text]
+
+    def _build_synthesis_params(
+        self,
+        text: str,
+        speaker: torch.Tensor,
+        language: str,
+        kwargs: dict,
+    ) -> tuple[dict, int]:
+        """청크별 Zonos 합성 파라미터를 구성한다."""
+        params = {
+            'text': text,
+            'speaker': speaker,
+            'language': language,
+            'speaking_rate': kwargs.get('speaking_rate', 15.0),
+            'pitch_std': kwargs.get('pitch_std', 20.0),
+            'emotion': kwargs.get(
+                'emotion',
+                [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0],
+            ),
+        }
+        max_new_tokens = kwargs.get(
+            'max_new_tokens',
+            self._estimate_max_new_tokens(text, language),
+        )
+        return params, max_new_tokens
+
+    def _move_to_device(self, obj):
+        """중첩된 텐서 구조를 현재 디바이스로 이동한다."""
+        if isinstance(obj, torch.Tensor):
+            return obj.to(device=self._device)
+        if isinstance(obj, list):
+            return [self._move_to_device(x) for x in obj]
+        if isinstance(obj, dict):
+            return {k: self._move_to_device(v) for k, v in obj.items()}
+        return obj
+
+    def _synthesize_chunk(
+        self,
+        text: str,
+        speaker: torch.Tensor,
+        language: str,
+        kwargs: dict,
+        audio_prefix_codes: torch.Tensor | None = None,
+    ) -> tuple[np.ndarray, torch.Tensor]:
+        """단일 청크를 합성해 오디오와 생성 코드를 반환한다."""
+        from zonos.conditioning import make_cond_dict
+
+        params, max_new_tokens = self._build_synthesis_params(
+            text, speaker, language, kwargs
+        )
+        cond_dict = make_cond_dict(**params)
+        cond_dict = self._move_to_device(cond_dict)
+        conditioning = self._model.prepare_conditioning(cond_dict)
+        conditioning = self._move_to_device(conditioning)
+
+        codes = self._model.generate(
+            conditioning,
+            audio_prefix_codes=audio_prefix_codes,
+            max_new_tokens=max_new_tokens,
+            disable_torch_compile=self._should_disable_torch_compile(),
+        )
+
+        wavs = self._model.autoencoder.decode(codes).cpu()
+        audio = wavs[0].squeeze().numpy()
+
+        if audio_prefix_codes is not None:
+            prefix_wavs = self._model.autoencoder.decode(audio_prefix_codes).cpu()
+            prefix_audio = prefix_wavs[0].squeeze().numpy()
+            trim_samples = min(len(prefix_audio), len(audio))
+            audio = audio[trim_samples:]
+
+        return audio, codes
+
+    def _select_prefix_codes(
+        self,
+        codes: torch.Tensor,
+        prefix_code_count: int,
+    ) -> torch.Tensor | None:
+        """다음 청크 연속성을 위한 tail prefix 코드를 선택한다."""
+        if prefix_code_count <= 0 or codes.shape[-1] <= 0:
+            return None
+        prefix_code_count = min(prefix_code_count, codes.shape[-1])
+        return codes[..., -prefix_code_count:].contiguous()
+
+    def _pause_ms_for_chunk(self, chunk: str) -> int:
+        """청크 마지막 문장부호에 따라 자연스러운 pause 길이를 계산한다."""
+        stripped = chunk.rstrip()
+        if not stripped:
+            return 0
+        if stripped[-1] in '.!?。！？':
+            return 180
+        if stripped[-1] in ',;:':
+            return 110
+        return 40
+
+    def _merge_chunks_with_pauses(
+        self,
+        audio_parts: list[np.ndarray],
+        chunks: list[str],
+        sample_rate: int = 44100,
+    ) -> np.ndarray:
+        """청크 오디오를 문장부호 기반 짧은 pause로 자연스럽게 이어붙인다."""
+        if not audio_parts:
+            return np.array([], dtype=np.float32)
+
+        merged = audio_parts[0].astype(np.float32, copy=False)
+        for index, next_audio in enumerate(audio_parts[1:], start=1):
+            pause_ms = self._pause_ms_for_chunk(chunks[index - 1])
+            pause_samples = int(sample_rate * (pause_ms / 1000))
+            if pause_samples > 0:
+                merged = np.concatenate(
+                    [merged, np.zeros(pause_samples, dtype=np.float32)]
+                )
+            merged = np.concatenate([merged, next_audio.astype(np.float32, copy=False)])
+        return merged
+
+    def synthesize_stream(
+        self,
+        text: str,
+        voice_preset: str = 'default',
+        **kwargs,
+    ) -> Iterator[TTSResult]:
+        """긴 텍스트를 청크 단위로 순차 합성해 결과를 스트리밍한다."""
+        if not text.strip():
+            raise TTSGenerationError('TTS 입력 텍스트가 비어 있습니다.')
+
+        dtype = torch.bfloat16 if self._device != 'cpu' else torch.float32
+        language = self._detect_language(text, kwargs.get('language'))
+        chunks = self._split_text(text, language)
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        return TMP_DIR / f'{voice_name}_{timestamp}.wav'
+        prefix_code_count = int(kwargs.get('prefix_code_count', 24))
+
+        try:
+            speaker = self._get_speaker_embedding(voice_preset)
+            speaker = speaker.to(device=self._device, dtype=dtype)
+            prefix_codes = None
+
+            for index, chunk in enumerate(chunks, start=1):
+                chunk_audio, chunk_codes = self._synthesize_chunk(
+                    chunk,
+                    speaker,
+                    language,
+                    kwargs,
+                    audio_prefix_codes=prefix_codes,
+                )
+                prefix_codes = self._select_prefix_codes(
+                    chunk_codes,
+                    prefix_code_count=prefix_code_count,
+                )
+                chunk_path = self._build_output_path_with_suffix(
+                    voice_preset,
+                    suffix=f'chunk{index:02d}',
+                    timestamp=timestamp,
+                )
+                sf.write(str(chunk_path), chunk_audio.astype(np.float32, copy=False), 44100)
+                yield TTSResult(
+                    audio_path=str(chunk_path),
+                    voice_preset=voice_preset,
+                    engine='zonos',
+                    duration_sec=round(len(chunk_audio) / 44100, 2),
+                )
+        except Exception as exc:
+            raise TTSGenerationError(f'Zonos 스트리밍 합성 실패: {exc}') from exc
 
     def _get_speaker_embedding(self, voice_name: str) -> torch.Tensor:
         """
@@ -166,8 +388,6 @@ class ZonosTTSEngine(BaseTTS):
         if not text.strip():
             raise TTSGenerationError('TTS 입력 텍스트가 비어 있습니다.')
 
-        from zonos.conditioning import make_cond_dict
-
         out_path = self._build_output_path(voice_preset)
         dtype = torch.bfloat16 if self._device != 'cpu' else torch.float32
 
@@ -178,49 +398,30 @@ class ZonosTTSEngine(BaseTTS):
             speaker = self._get_speaker_embedding(voice_preset)
             speaker = speaker.to(device=self._device, dtype=dtype)
 
-            # 기본값 설정 및 사용자 파라미터 적용
             language = self._detect_language(text, kwargs.get('language'))
-            params = {
-                'text': text,
-                'speaker': speaker,
-                'language': language,
-                'speaking_rate': kwargs.get('speaking_rate', 15.0),
-                'pitch_std': kwargs.get('pitch_std', 20.0),
-                'emotion': kwargs.get(
-                    'emotion',
-                    [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0],
-                ),
-            }
-            max_new_tokens = kwargs.get(
-                'max_new_tokens',
-                self._estimate_max_new_tokens(text, language),
+            chunks = self._split_text(text, language)
+            prefix_code_count = int(kwargs.get('prefix_code_count', 24))
+            prefix_codes = None
+            audio_parts: list[np.ndarray] = []
+            for chunk in chunks:
+                chunk_audio, chunk_codes = self._synthesize_chunk(
+                    chunk,
+                    speaker,
+                    language,
+                    kwargs,
+                    audio_prefix_codes=prefix_codes,
+                )
+                prefix_codes = self._select_prefix_codes(
+                    chunk_codes,
+                    prefix_code_count=prefix_code_count,
+                )
+                audio_parts.append(chunk_audio.astype(np.float32, copy=False))
+
+            audio_data = self._merge_chunks_with_pauses(
+                audio_parts,
+                chunks,
+                sample_rate=44100,
             )
-
-            cond_dict = make_cond_dict(**params)
-
-            def move_to_device(obj):
-                if isinstance(obj, torch.Tensor):
-                    return obj.to(device=self._device)
-                elif isinstance(obj, list):
-                    return [move_to_device(x) for x in obj]
-                elif isinstance(obj, dict):
-                    return {k: move_to_device(v) for k, v in obj.items()}
-                return obj
-
-            cond_dict = move_to_device(cond_dict)
-            conditioning = self._model.prepare_conditioning(cond_dict)
-            conditioning = move_to_device(conditioning)
-
-            codes = self._model.generate(
-                conditioning,
-                max_new_tokens=max_new_tokens,
-                disable_torch_compile=self._should_disable_torch_compile(),
-            )
-
-            wavs = self._model.autoencoder.decode(codes).cpu()
-            import soundfile as sf
-
-            audio_data = wavs[0].squeeze().numpy()
             sf.write(str(out_path), audio_data, 44100)
 
             inference_duration = time.perf_counter() - t0

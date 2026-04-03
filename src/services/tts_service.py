@@ -81,12 +81,12 @@ class XTTSEngine(BaseTTS):
         """
         if not text.strip():
             raise TTSGenerationError('TTS 입력 텍스트가 비어 있습니다.')
+            t0 = time.perf_counter()
 
         speaker = voice_preset if voice_preset in XTTS_PRESETS else DEFAULT_PRESET
         out_path = TMP_DIR / f'{uuid.uuid4().hex}.wav'
 
         try:
-            t0 = time.perf_counter()
             self._tts.tts_to_file(
                 text=text,
                 speaker=speaker,
