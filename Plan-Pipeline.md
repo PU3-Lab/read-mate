@@ -3,7 +3,7 @@
 ## 목표
 
 ReadMate는 이미지 문서, PDF, 녹음 파일을 입력받아
-`입력 분기 → 텍스트 추출(OCR/pypdf/STT) → LLM 분석 → TTS 낭독 → UI 제공`까지를
+`입력 분기 → 텍스트 추출(OCR/pypdf/STT) → LLM 분석 → UI 제공`까지를
 하나의 일관된 작업 흐름으로 처리한다.
 
 이번 설계는 단순 기능 나열이 아니라, 실제 구현 시 바로 사용할 수 있도록 다음 4가지를 기준으로 잡는다.
@@ -32,7 +32,7 @@ Streamlit app / 사용자 입력 / 결과 렌더링
     |     deskew / denoise / contrast / threshold
     |
     +--> [OCR Service]               (이미지 / 스캔형 PDF)
-    |     PaddleOCR -> 신뢰도 검사 -> OCR API 폴백
+    |     Qwen2.5-VL (4-bit) -> OCR API 폴백
     |
     +--> [PDF Service]               (텍스트형 PDF)
     |     pypdf 텍스트 추출 -> 스캔형 판별 -> OCR 분기
@@ -45,9 +45,6 @@ Streamlit app / 사용자 입력 / 결과 렌더링
     |
     +--> [LLM Service]
     |     요약 / 정리 / 질의응답 (JSON 출력)
-    |
-    +--> [TTS Service]
-    |     XTTS v2 음성 합성 / 프리셋 목소리 선택 / ElevenLabs 폴백
     |
     +--> [Storage/Cache Layer]
           세션 상태 / 임시 파일 / 모델 싱글톤 / 중간 결과 캐시
@@ -77,8 +74,7 @@ read-mate/
 │   │   ├── pdf_service.py     # pypdf + 스캔형 분기
 │   │   ├── stt_service.py     # faster-whisper
 │   │   ├── text_service.py
-│   │   ├── llm_service.py
-│   │   └── tts_service.py
+│   │   └── llm_service.py
 │   ├── pipelines/
 │   │   └── reading_pipeline.py
 │   ├── infra/
@@ -86,8 +82,7 @@ read-mate/
 │   │   ├── files.py
 │   │   └── clients/
 │   │       ├── clova_ocr.py
-│   │       ├── openai_llm.py
-│   │       └── elevenlabs.py
+│   │       └── openai_llm.py
 │   └── ui/
 │       ├── components.py
 │       └── state.py
@@ -129,9 +124,9 @@ Input Service의 책임:
 
 1. 이미지 업로드 또는 카메라 촬영
 2. 이미지 전처리 (deskew, denoise, CLAHE, adaptive threshold)
-3. PaddleOCR 수행 → confidence 기반 품질 검증
+3. Qwen2.5-VL OCR 수행 → confidence 기반 품질 검증
 4. 기준 미달 시 HDX-005 API 폴백
-5. Text Structuring → LLM → TTS
+5. Text Structuring → LLM
 
 전처리 주의사항:
 - 전처리 결과는 OCR용, UI 미리보기는 원본 유지
@@ -141,7 +136,7 @@ Input Service의 책임:
 
 1. PDF 업로드
 2. pypdf로 텍스트 추출 시도
-3. 텍스트가 충분하면 → Text Structuring → LLM → TTS
+3. 텍스트가 충분하면 → Text Structuring → LLM
 4. 텍스트 없거나 부족하면 (스캔형) → 페이지별 이미지 변환 → OCR 경로
 
 PDF 스캔형 판별 기준 예시:
@@ -152,7 +147,7 @@ PDF 스캔형 판별 기준 예시:
 
 1. 오디오 파일 업로드
 2. faster-whisper STT → 텍스트 변환
-3. Text Structuring → LLM 요약/정리 → TTS
+3. Text Structuring → LLM 요약/정리
 
 STT 처리 참고사항:
 - 긴 녹음은 청크 단위 변환 후 병합
@@ -164,7 +159,6 @@ STT 처리 참고사항:
 2. 음성 질문이면 STT 처리 먼저
 3. 업로드된 자료의 추출 텍스트를 컨텍스트로 LLM에 전달
 4. 자료 기반 답변 생성 (JSON)
-5. TTS로 답변 읽어주기
 
 ---
 
@@ -197,22 +191,6 @@ Qwen2.5-7B → Qwen2.5-14B → GPT-5.4-mini
 
 ---
 
-## TTS 합성
-
-- 대상 텍스트: 요약문, 핵심 정리, 질의응답 답변
-- 긴 텍스트는 문장 단위 chunking 후 합성
-- 프리셋 목소리 선택 지원
-- 실패 시 ElevenLabs Eleven Multilingual v2 폴백
-
-처리 순서:
-1. TTS 입력 텍스트 정제
-2. XTTS v2 호출 (목소리 프리셋 적용)
-3. 임시 WAV 파일 저장
-4. UI 오디오 플레이어 연결
-5. 실패 시 ElevenLabs 폴백
-
----
-
 ## 파이프라인 오케스트레이션
 
 ```python
@@ -235,7 +213,6 @@ class ReadingPipeline:
     def _run_pdf_path(self, payload: InputPayload) -> str: ...
     def _run_audio_path(self, payload: InputPayload) -> str: ...
     def _run_llm(self, text: str, task: TaskType) -> LLMResult: ...
-    def _run_tts(self, text: str, voice_preset: str) -> TTSResult: ...
 ```
 
 ---
@@ -252,7 +229,6 @@ class InputPayload:
     file_name: str
     content: bytes
     question: str | None = None        # 질의응답용
-    voice_preset: str = 'default'      # TTS 목소리 선택
 ```
 
 ### STT 결과 모델
@@ -273,7 +249,7 @@ class OCRBox:
     text: str
     confidence: float
     bbox: list[list[int]]
-    source: str   # paddle | clova
+    source: str   # qwen2.5-vl | clova
 ```
 
 ### LLM 결과 모델
@@ -294,11 +270,9 @@ class LLMResult:
 class PipelineResult:
     extracted_text: str
     llm_result: LLMResult | None
-    audio_path: str | None
     ocr_engine: str | None
     stt_engine: str | None
     llm_engine: str
-    tts_engine: str
     warnings: list[str]
 ```
 
@@ -309,7 +283,7 @@ class PipelineResult:
 ### OCR 폴백
 
 ```text
-PaddleOCR
+Qwen2.5-VL (4-bit)
     -> 품질 기준 통과 시 사용
     -> 품질 기준 미달 시 HDX-005 API
 ```
@@ -327,20 +301,13 @@ Qwen2.5-7B
     -> OOM 또는 성능 문제 시 GPT-5.4-mini
 ```
 
-### TTS 폴백
-
-```text
-XTTS v2
-    -> 모델 로드 실패 / 합성 시간 과다 시 ElevenLabs
-```
-
 폴백 이력은 `warnings` 또는 `engine_trace` 형태로 반드시 기록.
 
 ---
 
 ## 모델 로딩 전략
 
-- OCR, LLM, STT, TTS 모델은 lazy load (첫 호출 시 로드, 이후 재사용)
+- OCR, LLM, STT 모델은 lazy load (첫 호출 시 로드, 이후 재사용)
 - 디바이스는 반드시 `available_device()` 사용
 
 ```python
@@ -362,15 +329,13 @@ device = available_device()
 | `input_payload` | 현재 입력 파일 메타정보 |
 | `extracted_text` | OCR/pypdf/STT로 추출된 텍스트 |
 | `llm_result` | JSON 파싱된 결과 |
-| `audio_path` | 생성된 오디오 경로 |
-| `voice_preset` | 선택한 TTS 목소리 |
 | `pipeline_status` | idle / running / success / failed |
 | `warnings` | 폴백, 저품질 OCR 등 경고 |
 
 상태 전이:
 
 ```text
-idle -> input_ready -> processing -> extract_done -> llm_done -> tts_done -> success
+idle -> input_ready -> processing -> extract_done -> llm_done -> success
                                           \-> failed
 ```
 
@@ -386,7 +351,6 @@ idle -> input_ready -> processing -> extract_done -> llm_done -> tts_done -> suc
 | OCR | 텍스트 거의 없음 | 경고 후 API 폴백 |
 | STT | 오디오 변환 실패 | 에러 메시지 표시 |
 | LLM | JSON 파싱 실패 | 재시도 후 최소 응답 반환 |
-| TTS | 모델 로드 실패 | ElevenLabs 폴백 또는 오디오 생략 |
 
 권장 예외 클래스:
 - `InputValidationError`
@@ -394,7 +358,6 @@ idle -> input_ready -> processing -> extract_done -> llm_done -> tts_done -> suc
 - `PDFExtractionError`
 - `STTError`
 - `LLMGenerationError`
-- `TTSGenerationError`
 - `PipelineExecutionError`
 
 ---
@@ -407,12 +370,10 @@ idle -> input_ready -> processing -> extract_done -> llm_done -> tts_done -> suc
 [input]      type=pdf file=lecture.pdf pages=12
 [pdf]        engine=pypdf chars=4821
 [llm]        engine=qwen2.5-7b task=summary retry=0 elapsed=5.12s
-[tts]        engine=xtts voice=default elapsed=2.87s
 
 [input]      type=audio file=lecture.mp3
 [stt]        engine=faster-whisper lang=ko elapsed=8.43s chars=3201
 [llm]        engine=qwen2.5-7b task=summary retry=1 elapsed=6.42s
-[tts]        engine=xtts voice=default elapsed=3.14s
 ```
 
 ---
@@ -421,13 +382,12 @@ idle -> input_ready -> processing -> extract_done -> llm_done -> tts_done -> suc
 
 ### 1단계 (핵심)
 
-- 이미지 업로드 → 전처리 → PaddleOCR → Qwen2.5-7B 요약 → Streamlit 렌더링
+- 이미지 업로드 → 전처리 → Qwen2.5-VL OCR → Qwen2.5-7B 요약 → Streamlit 렌더링
 - PDF 업로드 → pypdf 추출 or OCR 분기 → LLM 요약
 - 오디오 업로드 → faster-whisper STT → LLM 정리
 
 ### 2단계
 
-- XTTS v2 오디오 생성 + 프리셋 목소리 선택
 - 자료 기반 질의응답
 - 세션 상태 안정화
 
@@ -435,7 +395,6 @@ idle -> input_ready -> processing -> extract_done -> llm_done -> tts_done -> suc
 
 - OCR API 폴백 (HDX-005)
 - GPT-5.4-mini LLM 폴백
-- ElevenLabs TTS 폴백
 - 긴 문서 챕터 분리
 
 ---
@@ -445,7 +404,7 @@ idle -> input_ready -> processing -> extract_done -> llm_done -> tts_done -> suc
 ```text
 UI는 입력/출력만 담당
 Pipeline은 입력 타입 분기, 실행 순서, 실패 복구를 담당
-Service는 각 단계의 순수 기능을 담당 (OCR/PDF/STT/LLM/TTS)
+Service는 각 단계의 순수 기능을 담당 (OCR/PDF/STT/LLM)
 Model/Schema는 단계 간 계약을 담당
 Infra는 외부 API, 캐시, 파일, 디바이스 공통 기능을 담당
 ```
@@ -458,10 +417,9 @@ Infra는 외부 API, 캐시, 파일, 디바이스 공통 기능을 담당
 2. `src/core/config.py`, `src/core/exceptions.py`
 3. `src/services/input_service.py` — 파일 타입 분기
 4. `src/services/preprocess_service.py` — 이미지 전처리
-5. `src/services/ocr_service.py` — PaddleOCR 단일 경로
+5. `src/services/ocr_service.py` — Qwen2.5-VL OCR
 6. `src/services/pdf_service.py` — pypdf + 스캔형 분기
 7. `src/services/stt_service.py` — faster-whisper
 8. `src/services/llm_service.py` — Qwen2.5-7B JSON 출력
-9. `src/services/tts_service.py` — XTTS v2 + 목소리 선택
-10. `src/pipelines/reading_pipeline.py` — 전체 오케스트레이션
-11. `app.py` + `src/ui/` — Streamlit 화면 연결
+9. `src/pipelines/reading_pipeline.py` — 전체 오케스트레이션
+10. `app.py` + `src/ui/` — Streamlit 화면 연결
