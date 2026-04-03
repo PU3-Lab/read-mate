@@ -3,10 +3,11 @@ name = "read-mate"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.11,<3.12"
+requires-python = ">=3.11"
 dependencies = [
     "streamlit>=1.55.0",           # 웹 UI 프레임워크
     "pillow>=10.0.0",              # 이미지 파일 입출력
+    "opencv-python>=4.13.0.92",    # 이미지 전처리 (회전 보정, 노이즈 제거)
     "transformers[torch]>=5.3.0",  # Qwen2.5-VL / LLM 로드
     "qwen-vl-utils>=0.0.8",       # Qwen2.5-VL 이미지 전처리 유틸
     "bitsandbytes>=0.45.0",       # 4-bit 양자화 (NF4)
@@ -19,6 +20,7 @@ dependencies = [
     "pypdf>=5.0.0",                  # 텍스트형 PDF 본문 추출
     "pdf2image>=1.17.0",             # 스캔형 PDF 페이지 래스터화 (Poppler 의존)
     "faster-whisper>=1.0.0",        # 로컬 STT (녹음 파일 → 텍스트)
+    "soundfile>=0.12.0",           # 오디오 파일 I/O (.wav/.mp3)
     "openai>=2.29.0",              # GPT-5.4-mini (LLM 폴백)
     "requests>=2.32.0",            # Naver HyperCLOVA OCR API (HDX-005 폴백)
     "numpy>=2.4.2",
@@ -40,12 +42,15 @@ explicit = true
 [tool.uv.sources]
 torch = [
   { index = "pytorch-gpu", marker = "sys_platform == 'win32'" },
+  { index = "pytorch-gpu", marker = "sys_platform == 'linux'" },
 ]
 torchvision = [
   { index = "pytorch-gpu", marker = "sys_platform == 'win32'" },
+  { index = "pytorch-gpu", marker = "sys_platform == 'linux'" },
 ]
 torchaudio = [
   { index = "pytorch-gpu", marker = "sys_platform == 'win32'" },
+  { index = "pytorch-gpu", marker = "sys_platform == 'linux'" },
 ]
 
 [tool.ruff]
