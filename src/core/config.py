@@ -54,10 +54,16 @@ STT_MODEL: str = 'large-v3'  # faster-whisper 모델 크기
 TTS_MODEL: str = 'hexgrad/Kokoro-82M'  # kokoro-onnx HuggingFace repo
 ZONOS_MODEL: str = 'Zyphra/Zonos-v0.1-transformer'
 ZONOS_LANGUAGE: str = os.getenv('ZONOS_LANGUAGE', 'ko')
+ZONOS_ALLOW_MPS: bool = os.getenv('ZONOS_ALLOW_MPS', '').lower() in {
+    '1',
+    'true',
+    'yes',
+    'on',
+}
 ZONOS_MAX_NEW_TOKENS: int = 86 * 30
 ZONOS_CFG_SCALE: float = float(os.getenv('ZONOS_CFG_SCALE', '1.7'))
 ZONOS_MIN_P: float = float(os.getenv('ZONOS_MIN_P', '0.08'))
-ZONOS_SPEAKING_RATE: float = float(os.getenv('ZONOS_SPEAKING_RATE', '10.0'))
+ZONOS_SPEAKING_RATE: float = float(os.getenv('ZONOS_SPEAKING_RATE', '12.5'))
 ZONOS_PITCH_STD: float = float(os.getenv('ZONOS_PITCH_STD', '18.0'))
 ZONOS_DNSMOS_OVRL: float = float(os.getenv('ZONOS_DNSMOS_OVRL', '4.0'))
 

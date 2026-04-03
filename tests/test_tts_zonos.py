@@ -20,26 +20,17 @@ class FakeAutoencoder:
 
     @staticmethod
     def decode(_codes):
-        class FakeWave:
-            ndim = 3
-            shape = (1, 1, 4)
-
+        class FakeWave(np.ndarray):
             def cpu(self):
                 return self
 
-            def __getitem__(self, _index):
-                return FakeWave2D()
-
-        class FakeWave2D:
-            ndim = 2
-            shape = (1, 4)
-
-        return FakeWave()
+        return np.zeros((1, 1, 4), dtype=np.float32).view(FakeWave)
 
 
 class FakeZonosModel:
     def __init__(self) -> None:
         self.autoencoder = FakeAutoencoder()
+        self.generate_calls = []
 
     @classmethod
     def from_pretrained(cls, model_name: str, device: str):
@@ -57,7 +48,13 @@ class FakeZonosModel:
     def prepare_conditioning(self, cond_dict):
         return cond_dict
 
-    def generate(self, conditioning, max_new_tokens: int):
+    def generate(
+        self,
+        conditioning,
+        max_new_tokens: int,
+        disable_torch_compile: bool = False,
+    ):
+        self.generate_calls.append((conditioning, disable_torch_compile))
         return ('codes', conditioning, max_new_tokens)
 
 
@@ -93,6 +90,8 @@ class ZonosEngineTests(unittest.TestCase):
                 return False
 
         fake_torch_module.inference_mode = lambda: _InferenceMode()
+        fake_torch_module.zeros = lambda shape, dtype=None: np.zeros(shape, dtype=np.float32)
+        fake_torch_module.cat = lambda tensors, dim=0: np.concatenate(tensors, axis=dim)
         fake_torch_module.load = lambda path, map_location=None: (
             'loaded-speaker',
             path,
@@ -117,10 +116,14 @@ class ZonosEngineTests(unittest.TestCase):
         self.assertIn('zonos', TTSFactory.available())
 
     def test_list_presets_returns_default_only(self) -> None:
-        with self._install_fake_modules():
-            with patch('services.tts_zonos.available_device', return_value='cpu'):
-                engine = ZonosEngine()
-                self.assertEqual(engine.list_presets(), ['default'])
+        with tempfile.TemporaryDirectory() as temp_dir:
+            voices_dir = Path(temp_dir)
+            with self._install_fake_modules():
+                with patch('services.tts_zonos.available_device', return_value='cpu'):
+                    with patch('services.tts_zonos.ZONOS_EMBEDDINGS_DIR', voices_dir):
+                        engine = ZonosEngine()
+                        engine.embeddings_dir = voices_dir
+                        self.assertEqual(engine.list_presets(), ['default'])
 
     def test_synthesize_accepts_reference_audio_path(self) -> None:
         with tempfile.NamedTemporaryFile(suffix='.wav') as ref_audio:
@@ -227,6 +230,92 @@ class ZonosEngineTests(unittest.TestCase):
         trimmed = ZonosEngine._trim_leading_silence(speech, sr, np)
 
         self.assertEqual(trimmed.shape, speech.shape)
+
+    def test_move_to_device_recursively_moves_nested_tensors(self) -> None:
+        class FakeTensor:
+            def __init__(self) -> None:
+                self.moves: list[str] = []
+
+            def to(self, device: str):
+                self.moves.append(device)
+                return self
+
+        with self._install_fake_modules():
+            with patch('services.tts_zonos.available_device', return_value='mps'):
+                with patch('services.tts_zonos.ZONOS_ALLOW_MPS', True):
+                    engine = ZonosEngine()
+
+        payload = {
+            'speaker': FakeTensor(),
+            'items': [FakeTensor(), (FakeTensor(),)],
+        }
+
+        moved = engine._move_to_device(payload)
+
+        self.assertEqual(moved['speaker'].moves, ['mps'])
+        self.assertEqual(moved['items'][0].moves, ['mps'])
+        self.assertEqual(moved['items'][1][0].moves, ['mps'])
+
+    def test_split_text_into_segments_breaks_long_korean_text(self) -> None:
+        text = (
+            '첫 번째 문장은 비교적 길게 이어집니다. '
+            '두 번째 문장도 비슷한 길이로 계속 이어지면서 세그먼트 분할이 필요한 상황입니다. '
+            '세 번째 문장 역시 충분히 길어서 한 번 더 분리되는지 확인합니다.'
+        )
+
+        segments = ZonosEngine._split_text_into_segments(text, max_chars=40)
+
+        self.assertGreater(len(segments), 1)
+        self.assertEqual(
+            segments,
+            [
+                '첫 번째 문장은 비교적 길게 이어집니다.',
+                '두 번째 문장도 비슷한 길이로 계속 이어지면서 세그먼트 분할이 필요한 상황입니다.',
+                '세 번째 문장 역시 충분히 길어서 한 번 더 분리되는지 확인합니다.',
+            ],
+        )
+
+    def test_split_text_into_segments_merges_unclosed_quotes(self) -> None:
+        text = (
+            '아프리카 매체는 1일 "르나르가 마지막 시간을 보낼 것이다. '
+            '신뢰할 수 있는 여러 소식통에 따르면 그는 경질 직전에 있다"라고 보도했다. '
+            '이후 후속 분석도 덧붙였다.'
+        )
+
+        segments = ZonosEngine._split_text_into_segments(text, max_chars=40)
+
+        self.assertEqual(
+            segments,
+            [
+                '아프리카 매체는 1일 "르나르가 마지막 시간을 보낼 것이다. '
+                '신뢰할 수 있는 여러 소식통에 따르면 그는 경질 직전에 있다"라고 보도했다.',
+                '이후 후속 분석도 덧붙였다.',
+            ],
+        )
+
+    def test_synthesize_generates_multiple_segments_for_long_text(self) -> None:
+        long_text = (
+            '첫 번째 문장은 비교적 길게 이어집니다. '
+            '두 번째 문장도 비슷한 길이로 계속 이어지면서 세그먼트 분할이 필요한 상황입니다. '
+            '세 번째 문장까지 덧붙여서 전체 길이가 분할 기준을 확실하게 넘도록 만듭니다.'
+        )
+
+        with self._install_fake_modules():
+            with patch('services.tts_zonos.available_device', return_value='cpu'):
+                engine = ZonosEngine()
+                engine.synthesize(long_text, 'default')
+
+        self.assertGreater(len(engine._zonos.generate_calls), 1)
+
+    def test_build_generate_kwargs_disables_torch_compile_on_mps(self) -> None:
+        with self._install_fake_modules():
+            with patch('services.tts_zonos.available_device', return_value='mps'):
+                with patch('services.tts_zonos.ZONOS_ALLOW_MPS', True):
+                    engine = ZonosEngine()
+
+        kwargs = engine._build_generate_kwargs()
+
+        self.assertTrue(kwargs['disable_torch_compile'])
 
 
 if __name__ == '__main__':

@@ -20,6 +20,7 @@ from pathlib import Path
 
 from core.config import (
     TMP_DIR,
+    ZONOS_ALLOW_MPS,
     ZONOS_CFG_SCALE,
     ZONOS_DNSMOS_OVRL,
     ZONOS_EMBEDDINGS_DIR,
@@ -38,6 +39,8 @@ from services.base import BaseTTS
 logger = logging.getLogger(__name__)
 
 _DEFAULT_PRESET = 'default'
+_MAX_SEGMENT_CHARS = 80
+_SEGMENT_GAP_SEC = 0.12
 
 
 class ZonosEngine(BaseTTS):
@@ -139,20 +142,13 @@ class ZonosEngine(BaseTTS):
                 used_preset = str(speaker_source_path)
 
             t0 = time.perf_counter()
-            cond_dict = self._make_conditioning_dict(
-                make_cond_dict=make_cond_dict,
-                text=text,
+            segments = self._split_text_into_segments(text)
+            waveform = self._generate_segmented_waveform(
+                segments=segments,
                 speaker=speaker,
+                make_cond_dict=make_cond_dict,
+                torch=torch,
             )
-            conditioning = self._zonos.prepare_conditioning(cond_dict)
-            generate_kwargs = self._build_generate_kwargs()
-            with torch.inference_mode():
-                codes = self._zonos.generate(
-                    conditioning,
-                    **generate_kwargs,
-                )
-            wavs = self._zonos.autoencoder.decode(codes).cpu()
-            waveform = self._normalize_waveform(wavs)
             out_path = TMP_DIR / f'{uuid.uuid4().hex}.wav'
             self._save_waveform(
                 out_path=out_path,
@@ -166,7 +162,7 @@ class ZonosEngine(BaseTTS):
 
         logger.info(
             '[tts:zonos] voice=%s language=%s chars=%d elapsed=%.2fs '
-            'cfg_scale=%.2f min_p=%.2f speaking_rate=%.1f pitch_std=%.1f',
+            'cfg_scale=%.2f min_p=%.2f speaking_rate=%.1f pitch_std=%.1f segments=%d',
             used_preset,
             self.language,
             len(text),
@@ -175,6 +171,7 @@ class ZonosEngine(BaseTTS):
             self.min_p,
             self.speaking_rate,
             self.pitch_std,
+            len(segments),
         )
         return TTSResult(
             audio_path=str(out_path),
@@ -223,6 +220,8 @@ class ZonosEngine(BaseTTS):
             'cfg_scale': self.cfg_scale,
             'sampling_params': {'min_p': self.min_p},
         }
+        if self.device == 'mps':
+            kwargs['disable_torch_compile'] = True
         return self._filter_supported_kwargs(self._zonos.generate, kwargs)
 
     @staticmethod
@@ -232,12 +231,116 @@ class ZonosEngine(BaseTTS):
         supported = set(signature.parameters)
         return {key: value for key, value in kwargs.items() if key in supported}
 
+    def _generate_segmented_waveform(self, segments, speaker, make_cond_dict, torch):
+        """긴 입력을 여러 세그먼트로 나눠 생성하고 하나의 파형으로 합친다."""
+        chunk_waveforms = [
+            self._generate_single_waveform(
+                text=segment,
+                speaker=speaker,
+                make_cond_dict=make_cond_dict,
+                torch=torch,
+            )
+            for segment in segments
+        ]
+        if len(chunk_waveforms) == 1:
+            return chunk_waveforms[0]
+
+        sample_rate = self._zonos.autoencoder.sampling_rate
+        gap = torch.zeros(
+            (1, int(sample_rate * _SEGMENT_GAP_SEC)),
+            dtype=chunk_waveforms[0].dtype,
+        )
+        merged: list = []
+        for idx, chunk in enumerate(chunk_waveforms):
+            merged.append(chunk)
+            if idx != len(chunk_waveforms) - 1:
+                merged.append(gap)
+        return torch.cat(merged, dim=1)
+
+    def _generate_single_waveform(self, text: str, speaker, make_cond_dict, torch):
+        """텍스트 한 세그먼트를 개별 생성해 waveform으로 반환한다."""
+        cond_dict = self._make_conditioning_dict(
+            make_cond_dict=make_cond_dict,
+            text=text,
+            speaker=speaker,
+        )
+        cond_dict = self._move_to_device(cond_dict)
+        conditioning = self._zonos.prepare_conditioning(cond_dict)
+        conditioning = self._move_to_device(conditioning)
+        generate_kwargs = self._build_generate_kwargs()
+        with torch.inference_mode():
+            codes = self._zonos.generate(conditioning, **generate_kwargs)
+        wavs = self._zonos.autoencoder.decode(codes).cpu()
+        return self._normalize_waveform(wavs)
+
+    @staticmethod
+    def _split_text_into_segments(
+        text: str, max_chars: int = _MAX_SEGMENT_CHARS
+    ) -> list[str]:
+        """긴 텍스트를 문장/문단 경계 기준으로만 분할한다."""
+        normalized = text.strip()
+        if len(normalized) <= max_chars:
+            return [normalized]
+
+        paragraphs = [
+            part.strip() for part in re.split(r'\n\s*\n+', normalized) if part.strip()
+        ]
+        sentences: list[str] = []
+        for paragraph in paragraphs:
+            pieces = re.split(r'(?<=[.!?。！？])\s+', paragraph)
+            sentences.extend(piece.strip() for piece in pieces if piece.strip())
+
+        segments: list[str] = []
+        current = ''
+        for sentence in sentences:
+            if len(sentence) > max_chars:
+                if current:
+                    segments.append(current.strip())
+                    current = ''
+                segments.append(sentence)
+                continue
+
+            candidate = sentence if not current else f'{current} {sentence}'
+            if len(candidate) <= max_chars:
+                current = candidate
+            else:
+                segments.append(current.strip())
+                current = sentence
+
+        if current:
+            segments.append(current.strip())
+
+        return ZonosEngine._merge_quoted_segments(segments or [normalized])
+
+    @staticmethod
+    def _merge_quoted_segments(segments: list[str]) -> list[str]:
+        """닫히지 않은 큰따옴표가 있으면 다음 세그먼트와 이어 붙인다."""
+        merged: list[str] = []
+        pending = ''
+
+        for segment in segments:
+            if pending:
+                pending = f'{pending} {segment}'.strip()
+            else:
+                pending = segment.strip()
+
+            if pending.count('"') % 2 == 0:
+                merged.append(pending)
+                pending = ''
+
+        if pending:
+            merged.append(pending)
+
+        return merged
+
     def _make_speaker_embedding(self, wav, sampling_rate):
         """현재 설치된 Zonos 버전에 맞는 speaker embedding API를 선택한다."""
         if hasattr(self._zonos, 'make_speaker_embedding'):
-            return self._zonos.make_speaker_embedding(wav, sampling_rate)
+            speaker = self._zonos.make_speaker_embedding(wav, sampling_rate)
+            return self._move_to_device(speaker)
         if hasattr(self._zonos, 'embed_spk_audio'):
-            return self._zonos.embed_spk_audio(wav, sampling_rate)
+            speaker = self._zonos.embed_spk_audio(wav, sampling_rate)
+            return self._move_to_device(speaker)
         raise TTSGenerationError('Zonos speaker embedding API를 찾지 못했습니다.')
 
     def _load_or_make_speaker_embedding(
@@ -311,9 +414,25 @@ class ZonosEngine(BaseTTS):
     def _load_speaker_embedding(self, speaker_embedding_path: Path, torch):
         """저장된 .pt speaker embedding을 현재 디바이스에 맞게 로드한다."""
         speaker = torch.load(str(speaker_embedding_path), map_location=self.device)
-        if hasattr(speaker, 'to'):
-            return speaker.to(self.device)
-        return speaker
+        return self._move_to_device(speaker)
+
+    def _move_to_device(self, value):
+        """중첩된 speaker/conditioning payload를 현재 디바이스에 맞춘다."""
+        if isinstance(value, dict):
+            return {
+                key: self._move_to_device(nested_value)
+                for key, nested_value in value.items()
+            }
+        if isinstance(value, list):
+            return [self._move_to_device(item) for item in value]
+        if isinstance(value, tuple):
+            return tuple(self._move_to_device(item) for item in value)
+        if hasattr(value, 'to'):
+            try:
+                return value.to(self.device)
+            except Exception:
+                return value
+        return value
 
     @staticmethod
     def _normalize_waveform(wavs):
@@ -457,7 +576,7 @@ class ZonosEngine(BaseTTS):
         Zonos는 공식 문서 기준 CUDA/CPU 중심이므로, MPS는 우선 CPU로 내린다.
         """
         device = available_device()
-        if device == 'mps':
+        if device == 'mps' and not ZONOS_ALLOW_MPS:
             logger.info('[tts:zonos] MPS는 검증되지 않아 cpu로 폴백')
             return 'cpu'
         return device
