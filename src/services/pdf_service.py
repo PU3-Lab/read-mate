@@ -1,6 +1,6 @@
 """
 PDF 텍스트 추출 엔진 구현.
-텍스트형 PDF는 pypdf로 추출, 스캔형은 PaddleOCR로 처리.
+텍스트형 PDF는 pypdf로 추출, 스캔형은 Qwen2.5-VL OCR로 처리.
 """
 
 import io

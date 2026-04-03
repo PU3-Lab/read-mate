@@ -1,7 +1,7 @@
 """
 ReadMate 메인 파이프라인 오케스트레이터.
 입력 타입에 따라 OCR/PDF/STT 경로를 분기하고
-LLM → TTS 순서로 실행한다.
+LLM 순서로 실행한다.
 각 서비스는 ABC 인터페이스로 주입받아 모델 교체가 자유롭다.
 """
 
@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 
-from models.schemas import (
+from src.models.schemas import (
     InputPayload,
     InputType,
     LLMResult,
@@ -18,9 +18,8 @@ from models.schemas import (
     PipelineStatus,
     STTResult,
     TaskType,
-    TTSResult,
 )
-from src.services.base import BaseLLM, BaseOCR, BasePDF, BaseSTT, BaseTTS
+from src.services.base import BaseLLM, BaseOCR, BasePDF, BaseSTT
 
 logger = logging.getLogger(__name__)
 
@@ -34,11 +33,10 @@ class ReadingPipeline:
 
     Example:
         pipeline = ReadingPipeline(
-            ocr=PaddleOCREngine(),
-            pdf=PyPDFEngine(ocr_fallback=PaddleOCREngine()),
+            ocr=Qwen2VLEngine(),
+            pdf=PyPDFEngine(ocr_fallback=Qwen2VLEngine()),
             stt=FasterWhisperEngine(),
             llm=QwenLLM(),
-            tts=XTTSEngine(),
         )
         result = pipeline.run(payload)
     """
@@ -49,23 +47,21 @@ class ReadingPipeline:
         pdf: BasePDF,
         stt: BaseSTT,
         llm: BaseLLM,
-        tts: BaseTTS,
     ) -> None:
         self.ocr = ocr
         self.pdf = pdf
         self.stt = stt
         self.llm = llm
-        self.tts = tts
 
     def run(self, payload: InputPayload) -> PipelineResult:
         """
         입력 타입에 따라 적절한 경로로 분기해 전체 파이프라인 실행.
 
         Args:
-            payload: 파일 타입, 콘텐츠, 질문, 목소리 설정 포함
+            payload: 파일 타입, 콘텐츠, 질문 포함
 
         Returns:
-            PipelineResult: 추출 텍스트, LLM 결과, TTS 결과, 경고 목록
+            PipelineResult: 추출 텍스트, LLM 결과, 경고 목록
         """
         warnings: list[str] = []
 
@@ -86,14 +82,9 @@ class ReadingPipeline:
             task = TaskType.QA if payload.question else TaskType.SUMMARIZE
             llm_result = self._run_llm(extracted_text, task, payload.question, warnings)
 
-            # ── 3. TTS 합성 ─────────────────────────────────
-            tts_input = self._build_tts_input(llm_result, payload.question)
-            tts_result = self._run_tts(tts_input, payload.voice_preset, warnings)
-
             return PipelineResult(
                 extracted_text=extracted_text,
                 llm_result=llm_result,
-                tts_result=tts_result,
                 ocr_engine=ocr_engine,
                 stt_engine=stt_engine,
                 status=PipelineStatus.SUCCESS,
@@ -185,31 +176,3 @@ class ReadingPipeline:
         result = self.llm.generate(text, task, question)
         logger.info('[llm] engine=%s task=%s', result.engine, task.value)
         return result
-
-    # ─────────────────────────────────────────────────────────
-    # TTS
-    # ─────────────────────────────────────────────────────────
-
-    def _build_tts_input(self, llm_result: LLMResult, question: str | None) -> str:
-        """TTS에 넘길 텍스트 결정. QA면 답변, 아니면 요약문 사용."""
-        if question and llm_result.qa_answer:
-            return llm_result.qa_answer
-        return llm_result.summary
-
-    def _run_tts(
-        self, text: str, voice_preset: str, warnings: list[str]
-    ) -> TTSResult | None:
-        """TTS 합성 실행. 실패해도 파이프라인 전체를 막지 않는다."""
-        try:
-            result = self.tts.synthesize(text, voice_preset)
-            logger.info(
-                '[tts] engine=%s voice=%s duration=%.2fs',
-                result.engine,
-                result.voice_preset,
-                result.duration_sec,
-            )
-            return result
-        except Exception as e:
-            warnings.append(f'TTS 실패 (오디오 생략): {e}')
-            logger.warning('[tts] failed: %s', e)
-            return None
