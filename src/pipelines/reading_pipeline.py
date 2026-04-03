@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 
+from services.base import BaseLLM, BaseOCR, BasePDF, BaseSTT, BaseTTS
 from src.models.schemas import (
     InputPayload,
     InputType,
@@ -20,7 +21,6 @@ from src.models.schemas import (
     TaskType,
     TTSResult,
 )
-from src.services.base import BaseLLM, BaseOCR, BasePDF, BaseSTT, BaseTTS
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +38,7 @@ class ReadingPipeline:
             pdf=PyPDFEngine(ocr_fallback=Qwen2VLEngine()),
             stt=FasterWhisperEngine(),
             llm=QwenLLM(),
+            llm=GemmaLLM(),
             tts=SomeTTSEngine(),
         )
         result = pipeline.run(payload)

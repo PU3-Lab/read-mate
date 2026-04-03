@@ -51,3 +51,14 @@ your-project/
     └── agents/              # 🔴 Subagent personals - isolated context (서브 에이전트)
         ├── code-reviewer.md # focused purely on reviewing code
         └── security-auditor.md # specialized in security analysis
+## LLM 점검 스크립트
+* 실행 스크립트는 `scripts/` 폴더에 둔다
+* `Gemma`, `Qwen`, `GPT`를 선택해 샘플 본문 요약과 QA를 점검할 수 있다
+
+```powershell
+python scripts/run_llm_check.py
+python scripts/run_llm_check.py --engine gemma --sample science_climate --qa
+python scripts/run_llm_check.py --engine qwen --sample history_printing
+python scripts/run_llm_check.py --engine gpt --sample study_memory --qa
+python scripts/run_llm_check.py --list-samples
+```

@@ -70,7 +70,7 @@ class BaseSTT(ABC):
 
 
 class BaseLLM(ABC):
-    """LLM 엔진 인터페이스."""
+    """LLM 엔진 인터페이스. 구현체는 llm_base.ChunkedLLM을 상속한다."""
 
     @abstractmethod
     def generate(
@@ -78,7 +78,6 @@ class BaseLLM(ABC):
     ) -> LLMResult:
         """
         텍스트와 태스크 타입을 받아 LLM 결과 반환.
-        JSON 출력 강제, 파싱 실패 시 최대 3회 재시도.
 
         Args:
             text: 분석할 원문 텍스트
