@@ -1,13 +1,15 @@
 """
-LLM 실 추론 테스트 (Qwen / OpenAI 선택 가능).
+LLM 실 추론 테스트 (Gemma / Qwen / OpenAI 선택 가능).
 기본: 텍스트 → 요약 (질문 없음)
 QA:   --qa 플래그로 별도 실행
 
 실행:
-    uv run python tests/test_llm_real.py                          # Qwen, 전체 요약
+    uv run python tests/test_llm_real.py                          # Gemma, 전체 요약
+    uv run python tests/test_llm_real.py --engine gemma
     uv run python tests/test_llm_real.py --engine gpt             # GPT, 전체 요약
     uv run python tests/test_llm_real.py --sample science_climate
     uv run python tests/test_llm_real.py --qa                     # 요약 + QA
+    uv run python tests/test_llm_real.py --engine gemma --model google/gemma-3-12b-it
     uv run python tests/test_llm_real.py --engine qwen --model Qwen/Qwen2.5-14B-Instruct
     uv run python tests/test_llm_real.py --engine gpt  --model gpt-4.1
 """
@@ -22,6 +24,7 @@ import time
 from lib.utils.path import data_path
 from models.schemas import TaskType
 from services.llm_base import ChunkedLLM
+from services.llm_gemma import GemmaLLM
 from services.llm_openai import OpenAILLM
 from services.llm_qwen import QwenLLM
 
@@ -145,6 +148,7 @@ def print_summary(all_results: dict) -> None:
 
 
 ENGINE_DEFAULTS = {
+    'gemma': 'google/gemma-3-4b-it',
     'qwen': 'Qwen/Qwen2.5-7B-Instruct',
     'gpt': 'gpt-4.1-mini',
 }
@@ -153,6 +157,8 @@ ENGINE_DEFAULTS = {
 def build_llm(engine: str, model: str | None) -> ChunkedLLM:
     """엔진 이름에 따라 LLM 인스턴스를 생성한다."""
     model_name = model or ENGINE_DEFAULTS[engine]
+    if engine == 'gemma':
+        return GemmaLLM(model_name=model_name)
     if engine == 'gpt':
         return OpenAILLM(model_name=model_name)
     return QwenLLM(model_name=model_name)
@@ -162,9 +168,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description='LLM 실 추론 테스트')
     parser.add_argument(
         '--engine',
-        choices=['qwen', 'gpt'],
-        default='qwen',
-        help='사용할 엔진 (기본: qwen)',
+        choices=['gemma', 'qwen', 'gpt'],
+        default='gemma',
+        help='사용할 엔진 (기본: gemma)',
     )
     with open(data_path() / 'sample_texts.json', encoding='utf-8') as f:
         samples_dict = json.loads(f.read())
