@@ -89,6 +89,10 @@
 - PDF 분기: 텍스트 추출 가능 → pypdf / 스캔형 → Qwen2.5-VL OCR
 - OCR/LLM 메모리 전략: OCR 완료 후 VL 모델 언로드 → LLM 로드 (`Qwen2VLEngine.unload()`)
 - 린터: `ruff` (설정은 `pyproject.toml` 참고)
+- 함수안에서 import 하지말것
+- 구현부는 별도 파일로 같은 파일에 클래스 한개이상 넣지 말것
+- path는 lib.utils.path안에 함수 사용 및 추가
+- import 시 src. 사용금지
 
 ---
 

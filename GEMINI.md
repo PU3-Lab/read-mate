@@ -26,6 +26,15 @@
 - **타입 힌트:** 모든 함수와 메서드에 타입 힌트 작성이 필수입니다.
 - **문서화:** 모든 함수에 docstring을 작성합니다. (한국어 권장)
 - **디렉토리 구조:** 새로운 소스 코드는 `src/` 하위의 적절한 모듈에 위치시킵니다.
+- 함수안에서 import 하지말것
+- 구현부는 별도 파일로 같은 파일에 클래스 한개이상 넣지 말것
+- 디바이스 감지는 **직접 작성 금지**, 반드시 `src/lib/utils/device.py`의 `available_device()` 사용
+  ```python
+  from src.lib.utils.device import available_device
+  device = available_device()
+  ```
+- path는 lib.utils.path안에 함수 사용 및 추가
+- import 시 src. 사용금지
 
 ## 4. Gemini CLI 작업 프로세스
 - **Research -> Strategy -> Execution:** 작업을 시작하기 전 항상 관련 파일을 읽고 이해한 뒤, 전략을 세우고 실행합니다.
