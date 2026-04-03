@@ -1,7 +1,7 @@
 """
 ReadMate 메인 파이프라인 오케스트레이터.
 입력 타입에 따라 OCR/PDF/STT 경로를 분기하고
-LLM → TTS 순서로 실행한다.
+LLM 순서로 실행한다.
 각 서비스는 ABC 인터페이스로 주입받아 모델 교체가 자유롭다.
 """
 
@@ -9,7 +9,8 @@ from __future__ import annotations
 
 import logging
 
-from models.schemas import (
+from services.base import BaseLLM, BaseOCR, BasePDF, BaseSTT, BaseTTS
+from src.models.schemas import (
     InputPayload,
     InputType,
     LLMResult,
@@ -20,7 +21,6 @@ from models.schemas import (
     TaskType,
     TTSResult,
 )
-from services.base import BaseLLM, BaseOCR, BasePDF, BaseSTT, BaseTTS
 
 logger = logging.getLogger(__name__)
 
@@ -34,11 +34,12 @@ class ReadingPipeline:
 
     Example:
         pipeline = ReadingPipeline(
-            ocr=PaddleOCREngine(),
-            pdf=PyPDFEngine(ocr_fallback=PaddleOCREngine()),
+            ocr=Qwen2VLEngine(),
+            pdf=PyPDFEngine(ocr_fallback=Qwen2VLEngine()),
             stt=FasterWhisperEngine(),
+            llm=QwenLLM(),
             llm=GemmaLLM(),
-            tts=XTTSEngine(),
+            tts=SomeTTSEngine(),
         )
         result = pipeline.run(payload)
     """
