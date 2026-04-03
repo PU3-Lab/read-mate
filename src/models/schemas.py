@@ -45,6 +45,7 @@ class InputPayload:
     file_name: str
     content: bytes
     question: str | None = None  # 질의응답용 질문 텍스트
+    voice_preset: str = 'default'  # TTS 목소리 프리셋
 
 
 # ─────────────────────────────────────────
@@ -136,6 +137,21 @@ class LLMResult:
 
 
 # ─────────────────────────────────────────
+# TTS
+# ─────────────────────────────────────────
+
+
+@dataclass
+class TTSResult:
+    """TTS 서비스 결과."""
+
+    audio_path: str
+    voice_preset: str
+    engine: str
+    duration_sec: float
+
+
+# ─────────────────────────────────────────
 # 최종 파이프라인 결과
 # ─────────────────────────────────────────
 
@@ -146,6 +162,7 @@ class PipelineResult:
 
     extracted_text: str
     llm_result: LLMResult | None = None
+    tts_result: TTSResult | None = None
     ocr_engine: str | None = None
     stt_engine: str | None = None
     status: PipelineStatus = PipelineStatus.SUCCESS

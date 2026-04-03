@@ -14,6 +14,7 @@ from src.models.schemas import (
     PDFResult,
     STTResult,
     TaskType,
+    TTSResult,
 )
 
 
@@ -87,4 +88,27 @@ class BaseLLM(ABC):
         Returns:
             LLMResult: 요약, 핵심 정리, 질의응답 답변 등
         """
+        ...
+
+
+class BaseTTS(ABC):
+    """TTS 엔진 인터페이스."""
+
+    @abstractmethod
+    def synthesize(self, text: str, voice_preset: str = 'default') -> TTSResult:
+        """
+        텍스트를 음성으로 합성해 WAV 파일 경로 반환.
+
+        Args:
+            text: 읽어줄 텍스트
+            voice_preset: 프리셋 목소리 이름
+
+        Returns:
+            TTSResult: 오디오 파일 경로, 목소리, 엔진명, 재생 시간
+        """
+        ...
+
+    @abstractmethod
+    def list_presets(self) -> list[str]:
+        """사용 가능한 프리셋 목소리 목록 반환."""
         ...
