@@ -1,15 +1,12 @@
 """
-LLM 실 추론 테스트 (Qwen / OpenAI 선택 가능).
-기본: 텍스트 → 요약 (질문 없음)
-QA:   --qa 플래그로 별도 실행
+LLM 서버 실 테스트 (HTTP 클라이언트 사용).
+서버가 실행 중인 상태에서 실행해야 한다.
 
 실행:
-    uv run python tests/test_llm_real.py                          # Qwen, 전체 요약
-    uv run python tests/test_llm_real.py --engine gpt             # GPT, 전체 요약
+    uv run python tests/test_llm_real.py
+    uv run python tests/test_llm_real.py --qa
     uv run python tests/test_llm_real.py --sample science_climate
-    uv run python tests/test_llm_real.py --qa                     # 요약 + QA
-    uv run python tests/test_llm_real.py --engine qwen --model Qwen/Qwen2.5-14B-Instruct
-    uv run python tests/test_llm_real.py --engine gpt  --model gpt-4.1
+    uv run python tests/test_llm_real.py --url http://localhost:8000
 """
 
 from __future__ import annotations
@@ -19,11 +16,8 @@ import json
 import logging
 import time
 
+from api.client import DEFAULT_BASE_URL, LLMClient
 from lib.utils.path import data_path
-from models.schemas import TaskType
-from services.llm_base import ChunkedLLM
-from services.llm_openai import OpenAILLM
-from services.llm_qwen import QwenLLM
 
 logging.basicConfig(
     level=logging.INFO,
@@ -32,7 +26,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# ── 평가 기준 ───────────────────────────────────────────────────
+# ── 평가 기준 ───────────────────────────────────────────
 MIN_SUMMARY_LEN = 30
 MIN_KEY_POINTS = 2
 MIN_QA_ANSWER_LEN = 10
@@ -60,13 +54,13 @@ def check(label: str, passed: bool, detail: str = '') -> bool:
 # ─────────────────────────────────────────────────────────────────
 
 
-def run_summarize(llm: ChunkedLLM, key: str, sample: dict) -> dict:
+def run_summarize(client: LLMClient, key: str, sample: dict) -> dict:
     section(f'[{key}] {sample["label"]}')
     text = sample['text']
     print(f'  입력 길이: {len(text)}자')
 
     t0 = time.perf_counter()
-    result = llm.generate(text, TaskType.SUMMARIZE)
+    result = client.summarize(text)
     elapsed = time.perf_counter() - t0
 
     print(f'\n  [요약]\n  {result.summary}')
@@ -93,14 +87,14 @@ def run_summarize(llm: ChunkedLLM, key: str, sample: dict) -> dict:
 # ─────────────────────────────────────────────────────────────────
 
 
-def run_qa(llm: ChunkedLLM, key: str, sample: dict) -> dict | None:
+def run_qa(client: LLMClient, key: str, sample: dict) -> dict | None:
     question = sample.get('question')
     if not question:
         return None
 
     print(f'\n  ▶ QA: {question}')
     t0 = time.perf_counter()
-    result = llm.generate(sample['text'], TaskType.QA, question=question)
+    result = client.qa(sample['text'], question)
     elapsed = time.perf_counter() - t0
 
     print(f'  [답변] {result.qa_answer}')
@@ -144,28 +138,10 @@ def print_summary(all_results: dict) -> None:
 # ─────────────────────────────────────────────────────────────────
 
 
-ENGINE_DEFAULTS = {
-    'qwen': 'Qwen/Qwen2.5-7B-Instruct',
-    'gpt': 'gpt-4.1-mini',
-}
-
-
-def build_llm(engine: str, model: str | None) -> ChunkedLLM:
-    """엔진 이름에 따라 LLM 인스턴스를 생성한다."""
-    model_name = model or ENGINE_DEFAULTS[engine]
-    if engine == 'gpt':
-        return OpenAILLM(model_name=model_name)
-    return QwenLLM(model_name=model_name)
-
-
 def main() -> None:
-    parser = argparse.ArgumentParser(description='LLM 실 추론 테스트')
-    parser.add_argument(
-        '--engine',
-        choices=['qwen', 'gpt'],
-        default='qwen',
-        help='사용할 엔진 (기본: qwen)',
-    )
+    parser = argparse.ArgumentParser(description='LLM 서버 실 테스트')
+    parser.add_argument('--url', default=DEFAULT_BASE_URL, help=f'서버 URL (기본: {DEFAULT_BASE_URL})')
+
     with open(data_path() / 'sample_texts.json', encoding='utf-8') as f:
         samples_dict = json.loads(f.read())
 
@@ -173,29 +149,29 @@ def main() -> None:
         '--sample', choices=list(samples_dict.keys()), help='특정 샘플만 실행'
     )
     parser.add_argument('--qa', action='store_true', help='QA 테스트도 함께 실행')
-    parser.add_argument('--model', default=None, help='엔진 기본값 대신 사용할 모델명')
     args = parser.parse_args()
 
-    model_name = args.model or ENGINE_DEFAULTS[args.engine]
-    print('\n🚀 LLM 실 테스트 시작')
-    print(f'   엔진: {args.engine}')
-    print(f'   모델: {model_name}')
+    client = LLMClient(base_url=args.url)
+
+    print('\n🚀 LLM 서버 테스트 시작')
+    print(f'   서버: {args.url}')
     print(f'   모드: 요약{"+ QA" if args.qa else ""}')
 
-    t_load = time.perf_counter()
-    llm = build_llm(args.engine, args.model)
-    print(f'   준비 완료: {time.perf_counter() - t_load:.1f}s')
+    if not client.health():
+        print(f'\n❌ 서버에 연결할 수 없습니다: {args.url}')
+        print('   uv run uvicorn backend.main:app --port 8000 으로 서버를 먼저 실행하세요.')
+        return
 
     targets = {args.sample: samples_dict[args.sample]} if args.sample else samples_dict
 
     all_results: dict = {}
     for key, sample in targets.items():
         all_results[key] = {}
-        all_results[key]['summarize'] = run_summarize(llm, key, sample)
+        all_results[key]['summarize'] = run_summarize(client, key, sample)
         if args.qa:
-            qa = run_qa(llm, key, sample)
-            if qa:
-                all_results[key]['qa'] = qa
+            qa_res = run_qa(client, key, sample)
+            if qa_res:
+                all_results[key]['qa'] = qa_res
 
     print_summary(all_results)
 

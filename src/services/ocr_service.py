@@ -1,216 +1,175 @@
 """
-ReadMate OCR 서비스 구현체.
-- PaddleOCREngine: 로컬 기본 엔진
-- ClovaOCREngine:  HDX-005 API 폴백 엔진
+Qwen2.5-VL 기반 OCR 엔진 구현.
+VLM(Vision Language Model)으로 한국어/영어 텍스트 인식.
+4-bit 양자화로 8GB VRAM에서 동작 가능.
+싱글톤 패턴으로 모델 재로드 방지.
 """
 
-from __future__ import annotations
-
-import io
-import json
 import logging
-import uuid
-from pathlib import Path
+from io import BytesIO
+from threading import Lock
 
-import numpy as np
-import requests
-from paddleocr import PaddleOCR
+import torch
 from PIL import Image
-
-from core.config import (
-    CLOVA_API_KEY,
-    CLOVA_API_URL,
-    OCR_CONFIDENCE_THRESHOLD,
-    TMP_DIR,
+from qwen_vl_utils import process_vision_info
+from transformers import (
+    AutoProcessor,
+    BitsAndBytesConfig,
+    Qwen2_5_VLForConditionalGeneration,
 )
-from core.exceptions import OCRQualityError
+
 from lib.utils.device import available_device
 from models.schemas import OCRBox, OCRResult
 from services.base import BaseOCR
 
 logger = logging.getLogger(__name__)
 
+_MODEL_ID = 'Qwen/Qwen2.5-VL-7B-Instruct'
+_OCR_PROMPT = (
+    '이 이미지에서 모든 텍스트를 추출하세요. 텍스트만 출력하고 다른 설명은 하지 마세요.'
+)
 
-# ─────────────────────────────────────────
-# PaddleOCR 로컬 엔진
-# ─────────────────────────────────────────
 
+class Qwen2VLEngine(BaseOCR):
+    """
+    Qwen2.5-VL-7B 기반 한국어/영어 OCR 엔진.
+    4-bit NF4 양자화로 ~5-6GB VRAM 사용.
+    싱글톤 패턴으로 모델을 한 번만 로드.
+    """
 
-class PaddleOCREngine(BaseOCR):
-    """PaddleOCR 기반 로컬 OCR 엔진 (싱글톤 모델)."""
+    _instance: 'Qwen2VLEngine | None' = None
+    _lock: Lock = Lock()
 
-    _instance: PaddleOCREngine | None = None
-    _ocr = None
-
-    def __new__(cls) -> PaddleOCREngine:
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
+    def __new__(cls) -> 'Qwen2VLEngine':
+        """싱글톤 인스턴스 반환."""
+        with cls._lock:
+            if cls._instance is None:
+                cls._instance = super().__new__(cls)
+                cls._instance._model = None
+                cls._instance._processor = None
+                cls._instance._device = None
+                cls._instance._init_model()
         return cls._instance
 
-    def __init__(self) -> None:
-        if self._ocr is not None:
-            return
-        device = available_device()
-        use_gpu = device == 'cuda'
-        logger.info('[ocr] PaddleOCR loading use_gpu=%s', use_gpu)
-        self._ocr = PaddleOCR(
-            use_angle_cls=True,
-            lang='korean',
-            use_gpu=use_gpu,
-            show_log=False,
+    def _init_model(self) -> None:
+        """
+        Qwen2.5-VL 모델 초기화.
+        4-bit NF4 양자화 적용, available_device()로 디바이스 자동 감지.
+        """
+
+        self._device = available_device()
+        dtype = torch.bfloat16 if self._device != 'cpu' else torch.float32
+
+        logger.info('Qwen2.5-VL 초기화: device=%s dtype=%s', self._device, dtype)
+
+        bnb_config = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_compute_dtype=dtype,
+            bnb_4bit_quant_type='nf4',
+            bnb_4bit_use_double_quant=True,
         )
 
-    def recognize(self, image_bytes: bytes) -> OCRResult:
-        """
-        이미지 바이트를 PaddleOCR로 인식한다.
-
-        Args:
-            image_bytes: 이미지 원본 바이트
-
-        Returns:
-            OCRResult: 박스 목록, 평균 confidence, 원문 텍스트
-        """
-        image_array = self._bytes_to_array(image_bytes)
-        raw = self._ocr.ocr(image_array, cls=True)
-
-        boxes: list[OCRBox] = []
-        for page in raw or []:
-            for line in page or []:
-                bbox, (text, conf) = line
-                boxes.append(
-                    OCRBox(
-                        text=text,
-                        confidence=float(conf),
-                        bbox=[[int(p[0]), int(p[1])] for p in bbox],
-                        source='paddle',
-                    )
-                )
-
-        avg_conf = sum(b.confidence for b in boxes) / len(boxes) if boxes else 0.0
-        raw_text = '\n'.join(b.text for b in boxes)
-
-        logger.info('[ocr:paddle] boxes=%d avg_conf=%.2f', len(boxes), avg_conf)
-
-        if avg_conf < OCR_CONFIDENCE_THRESHOLD and boxes:
-            logger.warning('[ocr:paddle] 품질 낮음 avg_conf=%.2f', avg_conf)
-
-        return OCRResult(
-            boxes=boxes,
-            engine='paddle',
-            avg_confidence=avg_conf,
-            raw_text=raw_text,
-        )
-
-    @staticmethod
-    def _bytes_to_array(image_bytes: bytes) -> np.ndarray:
-        """이미지 바이트 → numpy array (RGB)."""
-        image = Image.open(io.BytesIO(image_bytes)).convert('RGB')
-        return np.array(image)
-
-
-# ─────────────────────────────────────────
-# Clova OCR API 폴백 엔진
-# ─────────────────────────────────────────
-
-
-class ClovaOCREngine(BaseOCR):
-    """네이버 Clova OCR HDX-005 API 폴백 엔진."""
-
-    def __init__(
-        self,
-        api_key: str = CLOVA_API_KEY,
-        api_url: str = CLOVA_API_URL,
-    ) -> None:
-        """
-        ClovaOCR 엔진을 초기화한다.
-
-        Args:
-            api_key: Clova OCR API 키
-            api_url: Clova OCR API 엔드포인트 URL
-        """
-        if not api_key or not api_url:
-            raise ValueError(
-                'CLOVA_API_KEY, CLOVA_API_URL이 .env에 설정되어 있지 않습니다.'
+        try:
+            self._model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
+                _MODEL_ID,
+                quantization_config=bnb_config,
+                device_map='auto',
+                torch_dtype=dtype,
             )
-        self.api_key = api_key
-        self.api_url = api_url
+            self._processor = AutoProcessor.from_pretrained(_MODEL_ID)
+            logger.info('Qwen2.5-VL 모델 로드 성공')
+        except Exception as e:
+            logger.error('Qwen2.5-VL 모델 로드 실패: %s', str(e))
+            raise RuntimeError(f'Qwen2.5-VL 초기화 실패\n오류: {str(e)[:200]}') from e
+
+    def unload(self) -> None:
+        """
+        VRAM 절약을 위해 모델 언로드.
+        OCR 완료 후 LLM 로드 전에 호출.
+        """
+        if self._model is not None:
+            del self._model
+            self._model = None
+        if self._processor is not None:
+            del self._processor
+            self._processor = None
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        # 싱글톤 인스턴스 초기화 (다음 호출 시 재로드 가능)
+        with self._lock:
+            Qwen2VLEngine._instance = None
+        logger.info('Qwen2.5-VL 모델 언로드 완료')
 
     def recognize(self, image_bytes: bytes) -> OCRResult:
         """
-        이미지 바이트를 Clova OCR API로 인식한다.
+        이미지 바이트를 받아 Qwen2.5-VL로 텍스트 인식.
 
         Args:
-            image_bytes: 이미지 원본 바이트
+            image_bytes: PNG/JPEG 등 이미지 원본 바이트
 
         Returns:
-            OCRResult: 박스 목록, 평균 confidence, 원문 텍스트
+            OCRResult: 인식된 텍스트 (bbox 없음, confidence=1.0)
 
         Raises:
-            OCRQualityError: API 호출 실패 또는 응답 파싱 오류
+            ValueError: 이미지 디코딩 실패 시
+            RuntimeError: 모델이 언로드된 상태에서 호출 시
         """
-        # 임시 파일로 저장 후 multipart 업로드
-        tmp_path = TMP_DIR / f'{uuid.uuid4().hex}.jpg'
+        if self._model is None or self._processor is None:
+            raise RuntimeError('모델이 언로드된 상태입니다. 새 인스턴스를 생성하세요.')
+
         try:
-            tmp_path.write_bytes(image_bytes)
-            boxes = self._call_api(tmp_path)
-        finally:
-            tmp_path.unlink(missing_ok=True)
+            pil_image = Image.open(BytesIO(image_bytes)).convert('RGB')
+        except Exception as e:
+            raise ValueError(f'이미지 디코딩 실패: {e}') from e
 
-        avg_conf = sum(b.confidence for b in boxes) / len(boxes) if boxes else 0.0
-        raw_text = '\n'.join(b.text for b in boxes)
+        messages = [
+            {
+                'role': 'user',
+                'content': [
+                    {'type': 'image', 'image': pil_image},
+                    {'type': 'text', 'text': _OCR_PROMPT},
+                ],
+            }
+        ]
 
-        logger.info('[ocr:clova] boxes=%d avg_conf=%.2f', len(boxes), avg_conf)
+        text = self._processor.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True
+        )
+        image_inputs, video_inputs = process_vision_info(messages)
+        inputs = self._processor(
+            text=[text],
+            images=image_inputs,
+            videos=video_inputs,
+            padding=True,
+            return_tensors='pt',
+        ).to(self._device)
+
+        with torch.no_grad():
+            generated_ids = self._model.generate(**inputs, max_new_tokens=2048)
+
+        # 입력 토큰 제거 후 디코딩
+        generated_ids_trimmed = [
+            out_ids[len(in_ids) :]
+            for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
+        ]
+        raw_text = self._processor.batch_decode(
+            generated_ids_trimmed,
+            skip_special_tokens=True,
+            clean_up_tokenization_spaces=False,
+        )[0].strip()
+
+        logger.info('OCR 완료: 텍스트 길이=%d', len(raw_text))
+
         return OCRResult(
-            boxes=boxes,
-            engine='clova',
-            avg_confidence=avg_conf,
+            boxes=[
+                OCRBox(
+                    text=raw_text,
+                    confidence=1.0,
+                    bbox=[],
+                    source='qwen2.5-vl',
+                )
+            ],
+            engine='Qwen2.5-VL-7B',
+            avg_confidence=1.0,
             raw_text=raw_text,
         )
-
-    def _call_api(self, image_path: Path) -> list[OCRBox]:
-        """
-        Clova OCR API를 호출하고 결과를 파싱한다.
-
-        Args:
-            image_path: 임시 이미지 파일 경로
-
-        Returns:
-            list[OCRBox]: 인식된 텍스트 박스 목록
-
-        Raises:
-            OCRQualityError: HTTP 오류 또는 파싱 실패
-        """
-        request_body = {
-            'images': [{'format': 'jpg', 'name': 'readmate'}],
-            'requestId': uuid.uuid4().hex,
-            'version': 'V2',
-            'timestamp': 0,
-        }
-        try:
-            with open(image_path, 'rb') as f:
-                response = requests.post(
-                    self.api_url,
-                    headers={'X-OCR-SECRET': self.api_key},
-                    data={'message': json.dumps(request_body)},
-                    files={'file': f},
-                    timeout=30,
-                )
-            response.raise_for_status()
-            data = response.json()
-        except Exception as exc:
-            raise OCRQualityError(f'Clova OCR API 호출 실패: {exc}') from exc
-
-        boxes: list[OCRBox] = []
-        for image_result in data.get('images', []):
-            for field in image_result.get('fields', []):
-                text = field.get('inferText', '').strip()
-                conf = float(field.get('inferConfidence', 1.0))
-                bounding_poly = field.get('boundingPoly', {})
-                vertices = bounding_poly.get('vertices', [])
-                bbox = [[int(v.get('x', 0)), int(v.get('y', 0))] for v in vertices]
-                if text:
-                    boxes.append(
-                        OCRBox(text=text, confidence=conf, bbox=bbox, source='clova')
-                    )
-
-        return boxes

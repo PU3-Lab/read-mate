@@ -61,7 +61,7 @@ class OCRBox:
     text: str
     confidence: float
     bbox: list[list[int]]
-    source: str  # 'paddle' | 'clova'
+    source: str  # 'qwen2.5-vl' | 'clova'
 
 
 @dataclass

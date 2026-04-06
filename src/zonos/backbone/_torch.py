@@ -1,31 +1,25 @@
-# Based on the upstream Zonos torch backbone implementation:
-# https://github.com/Zyphra/Zonos
-
-from __future__ import annotations
-
+# Based on gpt-fast: https://github.com/pytorch-labs/gpt-fast/blob/095b2229ee3a40e379c11f05b94bd6923db63b4b/model.py
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
+
 from zonos.config import BackboneConfig, InferenceParams
 
 
 def precompute_freqs_cis(
-    seq_len: int,
-    n_elem: int,
-    base: float = 10000,
+    seq_len: int, n_elem: int, base: float = 10000
 ) -> torch.Tensor:
-    """Rotary embedding cache를 미리 생성한다."""
     freqs = 1.0 / (
         base ** (torch.arange(0, n_elem, 2)[: (n_elem // 2)].float() / n_elem)
     )
     t = torch.arange(seq_len, device=freqs.device)
     freqs = torch.outer(t, freqs)
     freqs_cis = torch.polar(torch.ones_like(freqs), freqs)
-    return torch.stack([freqs_cis.real, freqs_cis.imag], dim=-1)
+    cache = torch.stack([freqs_cis.real, freqs_cis.imag], dim=-1)
+    return cache
 
 
 def apply_rotary_emb(x: torch.Tensor, freqs_cis: torch.Tensor) -> torch.Tensor:
-    """Q/K 텐서에 rotary embedding을 적용한다."""
     xshaped = x.float().reshape(*x.shape[:-1], -1, 2)
     freqs_cis = freqs_cis.view(-1, xshaped.size(1), 1, xshaped.size(3), 2)
     x_out2 = torch.stack(
@@ -33,58 +27,52 @@ def apply_rotary_emb(x: torch.Tensor, freqs_cis: torch.Tensor) -> torch.Tensor:
             xshaped[..., 0] * freqs_cis[..., 0] - xshaped[..., 1] * freqs_cis[..., 1],
             xshaped[..., 1] * freqs_cis[..., 0] + xshaped[..., 0] * freqs_cis[..., 1],
         ],
-        dim=-1,
+        -1,
     )
-    return x_out2.flatten(3).type_as(x)
+
+    x_out2 = x_out2.flatten(3)
+    return x_out2.type_as(x)
 
 
 def _update_kv_cache(
-    k: torch.Tensor,
-    v: torch.Tensor,
-    inference_params: InferenceParams,
-    layer_idx: int,
+    k: torch.Tensor, v: torch.Tensor, inference_params: InferenceParams, layer_idx: int
 ) -> torch.Tensor:
-    """증분 추론용 K/V 캐시를 갱신한다."""
+    """k/v: (batch_size, seqlen, nheads, head_dim) or (batch_size, 1, nheads, head_dim)"""
     assert layer_idx in inference_params.key_value_memory_dict
     kv_cache, _ = inference_params.key_value_memory_dict[layer_idx]
-
+    # Adjust key and value for inference
     batch_start = inference_params.batch_size_offset
     batch_end = batch_start + k.shape[0]
     sequence_start = inference_params.seqlen_offset
     sequence_end = sequence_start + k.shape[1]
-
     assert batch_end <= kv_cache.shape[0]
     assert sequence_end <= kv_cache.shape[1]
+    assert kv_cache is not None
     kv_cache[batch_start:batch_end, sequence_start:sequence_end, 0, ...] = k
     kv_cache[batch_start:batch_end, sequence_start:sequence_end, 1, ...] = v
     return kv_cache[batch_start:batch_end, :sequence_end, ...]
 
 
 class TorchZonosBackbone(nn.Module):
-    """순수 PyTorch 기반 Zonos transformer backbone."""
-
     supported_architectures = ['transformer']
     freqs_cis: torch.Tensor
 
-    def __init__(self, config: BackboneConfig) -> None:
-        """Transformer 전용 backbone을 초기화한다."""
+    def __init__(self, config: BackboneConfig):
         assert not config.ssm_cfg, (
             'This backbone implementation only supports the Transformer model.'
         )
         super().__init__()
         self.config = config
+
         self.layers = nn.ModuleList(
             TransformerBlock(config, i) for i in range(config.n_layer)
         )
         self.norm_f = nn.LayerNorm(config.d_model, eps=config.norm_epsilon)
 
     def allocate_inference_cache(
-        self,
-        batch_size: int,
-        max_seqlen: int,
-        dtype: torch.dtype = torch.bfloat16,
-    ) -> dict[int, tuple[torch.Tensor, None]]:
-        """레이어별 incremental decoding cache를 준비한다."""
+        self, batch_size: int, max_seqlen: int, dtype: torch.dtype = torch.bfloat16
+    ):
+        # TODO: This function should be pure
         head_dim = self.config.d_model // self.config.attn_cfg['num_heads']
         self.freqs_cis = precompute_freqs_cis(16384, head_dim)
         return {
@@ -93,11 +81,8 @@ class TorchZonosBackbone(nn.Module):
         }
 
     def forward(
-        self,
-        hidden_states: torch.Tensor,
-        inference_params: InferenceParams,
+        self, hidden_states: torch.Tensor, inference_params: InferenceParams
     ) -> torch.Tensor:
-        """모든 transformer block을 통과시킨다."""
         input_pos = torch.arange(0, hidden_states.shape[1], device=hidden_states.device)
         input_pos = input_pos + inference_params.lengths_per_sample.unsqueeze(-1)
 
@@ -108,12 +93,10 @@ class TorchZonosBackbone(nn.Module):
 
 
 class TransformerBlock(nn.Module):
-    """Zonos transformer block."""
-
     def __init__(self, config: BackboneConfig, layer_idx: int) -> None:
-        """Attention + MLP block을 구성한다."""
         super().__init__()
         self.config = config
+
         self.norm = nn.LayerNorm(config.d_model, eps=config.norm_epsilon)
         self.mixer = Attention(config, layer_idx)
         self.norm2 = nn.LayerNorm(config.d_model, eps=config.norm_epsilon)
@@ -123,23 +106,11 @@ class TransformerBlock(nn.Module):
         self.head_dim = config.d_model // config.attn_cfg['num_heads']
 
     def allocate_inference_cache(
-        self,
-        batch_size: int,
-        max_seqlen: int,
-        dtype: torch.dtype = torch.bfloat16,
-    ) -> tuple[torch.Tensor, None]:
-        """레이어 단위 K/V 캐시를 준비한다."""
-        return (
-            torch.empty(
-                batch_size,
-                max_seqlen,
-                2,
-                self.num_heads_kv,
-                self.head_dim,
-                dtype=dtype,
-            ),
-            None,
-        )
+        self, batch_size: int, max_seqlen: int, dtype: torch.dtype = torch.bfloat16
+    ):
+        return torch.empty(
+            batch_size, max_seqlen, 2, self.num_heads_kv, self.head_dim, dtype=dtype
+        ), None
 
     def forward(
         self,
@@ -147,17 +118,13 @@ class TransformerBlock(nn.Module):
         inference_params: InferenceParams,
         freqs_cis: torch.Tensor,
     ) -> torch.Tensor:
-        """Residual 경로를 포함한 block 계산."""
         x = x + self.mixer(self.norm(x), inference_params, freqs_cis)
         x = x + self.mlp(self.norm2(x))
         return x
 
 
 class Attention(nn.Module):
-    """Grouped-query attention 구현."""
-
-    def __init__(self, config: BackboneConfig, layer_idx: int) -> None:
-        """Attention projection을 초기화한다."""
+    def __init__(self, config: BackboneConfig, layer_idx: int):
         super().__init__()
         self.num_heads = config.attn_cfg['num_heads']
         self.num_heads_kv = config.attn_cfg['num_heads_kv']
@@ -167,9 +134,7 @@ class Attention(nn.Module):
         total_head_dim = (self.num_heads + 2 * self.num_heads_kv) * self.head_dim
         self.in_proj = nn.Linear(config.d_model, total_head_dim, bias=False)
         self.out_proj = nn.Linear(
-            self.num_heads * self.head_dim,
-            config.d_model,
-            bias=False,
+            self.num_heads * self.head_dim, config.d_model, bias=False
         )
 
     def forward(
@@ -178,7 +143,6 @@ class Attention(nn.Module):
         inference_params: InferenceParams,
         freqs_cis: torch.Tensor,
     ) -> torch.Tensor:
-        """Self-attention과 출력 projection을 수행한다."""
         batch_size, seqlen, _ = x.shape
 
         q_size = self.num_heads * self.head_dim
@@ -195,36 +159,26 @@ class Attention(nn.Module):
         kv = _update_kv_cache(k, v, inference_params, self.layer_idx)
         k, v = kv.unbind(dim=-3)
 
-        q, k, v = map(lambda tensor: tensor.transpose(1, 2), (q, k, v))
+        q, k, v = map(lambda x: x.transpose(1, 2), (q, k, v))
+
         y = F.scaled_dot_product_attention(
-            q,
-            k,
-            v,
-            is_causal=seqlen > 1,
-            enable_gqa=True,
+            q, k, v, is_causal=seqlen > 1, enable_gqa=True
         )
+
         y = y.transpose(1, 2).contiguous().view(batch_size, seqlen, q_size)
-        return self.out_proj(y)
+
+        y = self.out_proj(y)
+        return y
 
 
 class FeedForward(nn.Module):
-    """SwiGLU feed-forward block."""
-
     def __init__(self, config: BackboneConfig) -> None:
-        """MLP projection을 초기화한다."""
         super().__init__()
         self.fc1 = nn.Linear(
-            config.d_model,
-            2 * config.attn_mlp_d_intermediate,
-            bias=False,
+            config.d_model, 2 * config.attn_mlp_d_intermediate, bias=False
         )
-        self.fc2 = nn.Linear(
-            config.attn_mlp_d_intermediate,
-            config.d_model,
-            bias=False,
-        )
+        self.fc2 = nn.Linear(config.attn_mlp_d_intermediate, config.d_model, bias=False)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """SwiGLU 활성화를 적용한다."""
         y, gate = self.fc1(x).chunk(2, dim=-1)
         return self.fc2(y * F.silu(gate))
