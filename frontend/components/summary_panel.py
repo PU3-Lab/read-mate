@@ -90,7 +90,7 @@ def render_summary_panel():
     for(const b of btns) {{
       if(panel==='qa'   && b.innerText.includes('질의응답')) {{ b.click(); return; }}
       if(panel==='quiz' && b.innerText.includes('퀴즈'))    {{ b.click(); return; }}
-      if(panel==='back' && b.innerText.includes('기능 선택')) {{ b.click(); return; }}
+      if(panel==='back' && b.innerText.trim()==='ReadMate') {{ b.click(); return; }}
     }}
   }}
 

@@ -72,7 +72,7 @@ _A11Y_JS = """
       e.preventDefault();
       speak('기능 선택 화면으로 돌아갑니다.',()=>{
         const btns=window.parent.document.querySelectorAll('button');
-        for(const b of btns){if(b.innerText.includes('돌아가기')){b.click();break;}}
+        for(const b of btns){if(b.innerText.trim()==='ReadMate'){b.click();break;}}
       });
     }
   }

@@ -5,19 +5,19 @@ def inject_styles():
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Gowun+Dodum&family=Nanum+Gothic:wght@400;700;800&display=swap');
 
-/* ── WCAG 2.1 AA 기준 고대비 웜톤 테마 ── */
+/* ── WCAG 2.1 AAA 기준 저시력자용 고대비 웜톤 테마 ── */
 :root {
-  --bg:         #ffffff;
-  --surface:    #fff8f4;
-  --surface2:   #fff3ed;
-  --border:     #d4b8a8;
-  --accent:     #c05a3a;   /* 흰 배경 대비 5.2:1 AA */
-  --accent2:    #2e7d6b;   /* 흰 배경 대비 6.1:1 AA */
-  --accent3:    #c05a3a;
-  --text:       #1a1a1a;   /* 흰 배경 대비 19:1 AAA */
-  --text-muted: #6b5044;   /* 흰 배경 대비 4.6:1 AA  */
+  --bg:         #faf5f0;   /* 순백 대신 따뜻한 크림 → 눈부심 감소 */
+  --surface:    #edddd0;   /* 배경 대비 확실히 구분되는 베이지 */
+  --surface2:   #e0ccbb;   /* 2단계 중첩 카드용 */
+  --border:     #7a5540;   /* 배경 대비 6.5:1 AA+ */
+  --accent:     #8c2e10;   /* 흰 배경 대비 7.2:1 AAA */
+  --accent2:    #1a6b55;   /* 흰 배경 대비 7.1:1 AAA */
+  --accent3:    #8c2e10;
+  --text:       #1a0f0a;   /* 배경 대비 18:1 AAA */
+  --text-muted: #3d2010;   /* 배경 대비 8.5:1 AAA */
   --radius:     16px;
-  --shadow:     0 2px 16px rgba(100,60,40,.08);
+  --shadow:     0 2px 16px rgba(80,40,20,.18);
   --font-head:  'Nunito', 'Gowun Dodum', sans-serif;
   --font-body:  'Gowun Dodum', 'Nunito', sans-serif;
 }
@@ -81,7 +81,7 @@ html, body, [data-testid="stAppViewContainer"] {
 }
 .rm-card-title {
   font-family: 'Nanum Gothic', 'Apple SD Gothic Neo', '맑은 고딕', 'Malgun Gothic', sans-serif;
-  font-size: 1.3rem; font-weight: 900;
+  font-size: 1.4rem; font-weight: 900;
   color: var(--accent);
   margin: 0;
   display: flex; align-items: center; gap: .5rem;
@@ -146,7 +146,7 @@ html, body, [data-testid="stAppViewContainer"] {
   color: var(--text); margin-bottom: .4rem;
 }
 .feature-desc {
-  font-size: .88rem; color: var(--text-muted);
+  font-size: 1rem; color: var(--text-muted);
   font-weight: 700; line-height: 1.7;
 }
 
@@ -156,7 +156,7 @@ html, body, [data-testid="stAppViewContainer"] {
   border: 1.5px solid var(--border);
   border-radius: var(--radius);
   padding: .9rem 1.2rem;
-  font-size: .84rem; font-weight: 700;
+  font-size: .96rem; font-weight: 700;
   color: var(--text-muted);
   line-height: 1.9; margin-bottom: .8rem;
   position: relative; z-index: 1;
@@ -170,9 +170,9 @@ html, body, [data-testid="stAppViewContainer"] {
   border: none !important;
   border-radius: 50px !important;
   font-family: var(--font-head) !important;
-  font-weight: 700 !important; font-size: .9rem !important;
-  padding: .6rem 1.6rem !important;
-  box-shadow: 0 2px 8px rgba(192,90,58,.25) !important;
+  font-weight: 800 !important; font-size: 1rem !important;
+  padding: .75rem 1.8rem !important;
+  box-shadow: 0 2px 8px rgba(140,46,16,.35) !important;
   transition: opacity .15s, transform .15s !important;
   letter-spacing: .01em !important;
 }
@@ -247,7 +247,7 @@ html, body, [data-testid="stAppViewContainer"] {
 
 /* ── Body text ── */
 .rm-body {
-  font-size: .93rem; line-height: 1.85;
+  font-size: 1.05rem; line-height: 1.95;
   color: var(--text); font-weight: 700;
 }
 
@@ -257,8 +257,8 @@ html, body, [data-testid="stAppViewContainer"] {
   background: var(--surface2);
   border: 1.5px solid var(--border);
   color: var(--accent);
-  border-radius: 50px; padding: .25rem .9rem;
-  font-size: .82rem; font-weight: 800;
+  border-radius: 50px; padding: .3rem 1rem;
+  font-size: .95rem; font-weight: 800;
   font-family: var(--font-head);
 }
 

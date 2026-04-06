@@ -145,7 +145,7 @@ if st.session_state.feature is None:
     document.getElementById('wake').style.display='none';
     document.getElementById('hint').style.display='block';
     speak(
-      '리드메이트입니다. Tab키를 눌러 버튼으로 이동하세요. 첫번째 버튼은 강의 녹음 분석, 두번째 버튼은 강의 자료 분석입니다. Enter 를 눌러 선택하세요.',
+      '리드메이트입니다. 소리로 읽는 강의자료, 배움의 끝이 없도록 우리 함께 공부해요. Tab키를 눌러 버튼으로 이동하세요. 첫번째 버튼은 강의 녹음 분석, 두번째 버튼은 강의 자료 분석입니다. Enter 를 눌러 선택하세요.',
       ()=>{
         const btns=window.parent.document.querySelectorAll('button');
         for(const b of btns){if(b.innerText.includes('1번')){b.focus();break;}}
