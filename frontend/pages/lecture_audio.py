@@ -4,7 +4,6 @@ import sys
 sys.path.insert(0, os.path.abspath(os.path.dirname(sys.argv[0])))
 
 import streamlit as st
-import streamlit.components.v1 as components
 from components.result_panel import render_result_panel
 from job_runner import (
     get_analysis_job_progress,
@@ -132,7 +131,7 @@ def render() -> None:
                 _queue_processing(uploaded.name, uploaded.getvalue())
                 st.rerun()
 
-        components.html(_A11Y_JS, height=0)
+        st.iframe(_A11Y_JS, height=1)
 
     else:
         render_result_panel()

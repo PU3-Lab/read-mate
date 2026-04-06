@@ -12,7 +12,6 @@ if os.path.abspath(os.path.dirname(sys.argv[0])) in sys.path:
 sys.path.insert(0, os.path.abspath(os.path.dirname(sys.argv[0])))
 
 import streamlit as st
-import streamlit.components.v1 as components
 from components.result_panel import render_result_panel
 from job_runner import (
     get_analysis_job_progress,
@@ -346,7 +345,7 @@ def render() -> None:
     st.markdown('<div class="rm-page-title">📄 강의 자료 분석</div>', unsafe_allow_html=True)
 
     # 공통 브릿지 (항상 렌더)
-    components.html(_BRIDGE_JS, height=0)
+    st.iframe(_BRIDGE_JS, height=1)
 
     if st.session_state.get("processing_job"):
         render_result_panel()
@@ -393,7 +392,7 @@ def render() -> None:
                     st.session_state.input_mode = "camera"
                     st.rerun()
 
-            components.html(_INTRO_JS, height=0)
+            st.iframe(_INTRO_JS, height=1)
 
         # ── 파일 업로드 모드 ──────────────────────
         elif st.session_state.input_mode == "upload":
@@ -454,7 +453,7 @@ def render() -> None:
                     _queue_processing(upload_data["file_name"], upload_data["content"])
                     st.rerun()
 
-            components.html(_UPLOAD_JS, height=0)
+            st.iframe(_UPLOAD_JS, height=1)
 
         # ── 카메라 촬영 모드 ──────────────────────
         elif st.session_state.input_mode == "camera":
@@ -492,7 +491,7 @@ def render() -> None:
                         st.rerun()
 
                 # 키 이벤트 → postMessage
-                components.html("""
+                st.iframe("""
 <script>
 (function(){
   function speak(t,cb){
@@ -513,13 +512,13 @@ def render() -> None:
   try{window.parent.document.addEventListener('keydown',onKey);}catch(err){}
 })();
 </script>
-""", height=0)
+""", height=1)
 
             else:
-                components.html(_CAMERA_HTML, height=680, scrolling=False)
+                st.iframe(_CAMERA_HTML, height=680)
 
                 cam_val = st.text_input("cam_bridge", key="cam_bridge", label_visibility="collapsed")
-                components.html("""
+                st.iframe("""
 <script>
 (function(){
   const inputs=window.parent.document.querySelectorAll('input[type="text"]');
@@ -534,7 +533,7 @@ def render() -> None:
   });
 })();
 </script>
-""", height=0)
+""", height=1)
 
                 if cam_val and cam_val.startswith("data:image"):
                     st.session_state.camera_image = cam_val

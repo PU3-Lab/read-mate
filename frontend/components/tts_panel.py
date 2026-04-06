@@ -4,7 +4,6 @@ import sys, os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import streamlit as st
-import streamlit.components.v1 as components
 
 def render_tts_panel():
     audio   = st.session_state.get("audio_bytes")
@@ -19,7 +18,7 @@ def render_tts_panel():
         </div>
         """, unsafe_allow_html=True)
         b64 = base64.b64encode(audio).decode()
-        components.html(f"""
+        st.iframe(f"""
 <style>
 #ap{{background:#fff8f2;border:1.5px solid #f0e0cc;border-radius:20px;padding:1.2rem;outline:none;}}
 #ap:focus{{border-color:#ff7e5f;box-shadow:0 0 0 4px rgba(255,126,95,.18);}}
@@ -42,7 +41,7 @@ document.addEventListener('keydown',onKey);
 try{{window.parent.document.addEventListener('keydown',onKey);}}catch(err){{}}
 document.getElementById('ap').focus();
 </script>
-""", height=110, scrolling=False)
+""", height=110)
         st.download_button("⬇️ 음성 저장 (.wav)", data=audio,
                            file_name="readmate.wav", mime="audio/wav",
                            use_container_width=True)
@@ -50,7 +49,7 @@ document.getElementById('ap').focus();
     elif summary:
         # 브라우저 TTS 자동 낭독 (MeloTTS 미연결 시 폴백)
         safe = summary.replace("'","\\'").replace("\n"," ")
-        components.html(f"""
+        st.iframe(f"""
 <script>
 (function(){{
   setTimeout(()=>{{
@@ -62,4 +61,4 @@ document.getElementById('ap').focus();
   }},300);
 }})();
 </script>
-""", height=0)
+""", height=1)

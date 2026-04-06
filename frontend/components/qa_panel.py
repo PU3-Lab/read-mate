@@ -2,7 +2,6 @@ import sys, os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import streamlit as st
-import streamlit.components.v1 as components
 
 from pipelines import answer_question
 
@@ -171,7 +170,7 @@ def render_qa_panel():
     # 마지막 답변 자동 낭독
     if history and st.session_state.get("qa_new_answer"):
         ans = history[-1]["a"].replace("'","\\'").replace("\n"," ")
-        components.html(f"""
+        st.iframe(f"""
 <script>
 (function(){{
   function speak(t,cb){{
@@ -184,16 +183,16 @@ def render_qa_panel():
   }}),300);
 }})();
 </script>
-""", height=0)
+""", height=1)
         st.session_state.qa_new_answer = False
 
-    components.html(_QA_HTML, height=270, scrolling=False)
-    components.html(_QA_BRIDGE_HTML, height=0)
+    st.iframe(_QA_HTML, height=270)
+    st.iframe(_QA_BRIDGE_HTML, height=1)
 
     # 보조 텍스트 입력
     st.markdown('<div style="color:var(--text-muted);font-size:.8rem;font-weight:700;text-align:center;margin:.6rem 0 .3rem;">음성 인식이 안 될 경우 직접 입력</div>', unsafe_allow_html=True)
     st.text_input('qa_bridge', key='qa_bridge', label_visibility='collapsed')
-    components.html("""
+    st.iframe("""
 <script>
 (function(){
   const inputs = window.parent.document.querySelectorAll('input[type="text"]');
@@ -208,7 +207,7 @@ def render_qa_panel():
   }
 })();
 </script>
-""", height=0)
+""", height=1)
     c1, c2 = st.columns([4,1])
     with c1:
         tq = st.text_input("직접 입력", placeholder="질문 입력 후 Enter...", label_visibility="collapsed", key="qa_text")

@@ -4,7 +4,6 @@ import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import streamlit as st
-import streamlit.components.v1 as components
 
 
 def render_summary_panel():
@@ -81,7 +80,7 @@ def render_summary_panel():
         else "speak('현재 퀴즈가 준비되지 않았습니다.');"
     )
 
-    components.html(
+    st.iframe(
         f"""
 <script>
 (function() {{
@@ -135,5 +134,5 @@ def render_summary_panel():
 }})();
 </script>
 """,
-        height=0,
+        height=1,
     )

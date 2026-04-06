@@ -4,7 +4,6 @@ import pathlib
 import sys
 
 import streamlit as st
-import streamlit.components.v1 as components
 
 st.set_page_config(
     page_title='Read Mate',
@@ -127,7 +126,7 @@ if st.session_state.feature is None:
             st.rerun()
 
     # 음성 안내 + 포커스 + 전역 키
-    components.html(
+    st.iframe(
         """
 <style>
 #wake{

@@ -4,7 +4,6 @@ import sys, os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import streamlit as st
-import streamlit.components.v1 as components
 
 def render_quiz_panel():
     quiz_list = st.session_state.get("quiz", [])
@@ -32,7 +31,7 @@ def render_quiz_panel():
     qj = json.dumps(quiz_list, ensure_ascii=False)
     h  = 280 + len(quiz_list[0]["options"]) * 64 + 100
 
-    components.html(f"""
+    st.iframe(f"""
 <style>
 *{{box-sizing:border-box;margin:0;padding:0;}}
 body{{background:transparent;font-family:'Gowun Dodum',sans-serif;}}
@@ -246,7 +245,7 @@ body{{background:transparent;font-family:'Gowun Dodum',sans-serif;}}
   }},400);
 }})();
 </script>
-""", height=h, scrolling=False)
+""", height=h)
 
     st.markdown('<div class="btn-sec">', unsafe_allow_html=True)
     if st.button("← 요약으로 돌아가기", use_container_width=True, key="quiz_back"):
