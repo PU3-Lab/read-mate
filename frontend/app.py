@@ -20,10 +20,21 @@ if _ROOT not in sys.path:
 
 from styles import inject_styles
 
+from pipelines import get_default_reading_pipeline
+
 inject_styles()
 
 
 def init():
+    # 모델 미리 로드 (페이지 시작 시 한 번만 실행)
+    if 'models_loaded' not in st.session_state:
+        with st.spinner('시스템을 준비하고 있습니다... (모델 로딩 중)'):
+            try:
+                get_default_reading_pipeline()
+                st.session_state.models_loaded = True
+            except Exception as e:
+                st.error(f'모델 로딩 실패: {e}')
+
     defaults = {
         'feature': None,
         'raw_text': '',
