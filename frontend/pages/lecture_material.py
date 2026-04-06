@@ -2,6 +2,7 @@ import base64
 import io
 import os
 import sys
+import time
 
 import fitz
 from PIL import Image as PILImage
@@ -13,7 +14,12 @@ sys.path.insert(0, os.path.abspath(os.path.dirname(sys.argv[0])))
 import streamlit as st
 import streamlit.components.v1 as components
 from components.result_panel import render_result_panel
-from job_runner import submit_analysis_job, wait_for_analysis_job
+from job_runner import (
+    get_analysis_job_progress,
+    get_analysis_job_result,
+    submit_analysis_job,
+    wait_for_analysis_job,
+)
 from pipelines import analyze_content
 
 
@@ -580,32 +586,64 @@ def _queue_processing(file_name: str, content: bytes) -> None:
     st.session_state.qa_new_answer = False
 
 
+@st.fragment(run_every="1.0s")
+def _render_processing_status(job_id: str):
+    """진행 상황을 껌벅임 없이 업데이트하기 위한 프래그먼트."""
+    try:
+        result = get_analysis_job_result(job_id)
+    except Exception as exc:
+        st.error(f'분석 실패: {exc}')
+        st.session_state.processing_job = None
+        st.session_state.processing_step = None
+        st.session_state.processing_message = ''
+        st.rerun()
+        return
+
+    if result is None:
+        # 아직 진행 중: CSS 스피너와 함께 진행 메시지 표시
+        current_msg = get_analysis_job_progress(job_id)
+        st.markdown(f"""
+            <div style="display: flex; align-items: center; gap: 12px; padding: 1rem; background: #f8f9fa; border-radius: 10px; border: 1px solid #e9ecef;">
+                <div class="rm-loader"></div>
+                <div style="color: #495057; font-weight: 500;">{current_msg}</div>
+            </div>
+            <style>
+                .rm-loader {{
+                    border: 3px solid #f3f3f3;
+                    border-radius: 50%;
+                    border-top: 3px solid #ff7e5f;
+                    width: 24px;
+                    height: 24px;
+                    animation: rm-spin 1s linear infinite;
+                }}
+                @keyframes rm-spin {{
+                    0% {{ transform: rotate(0deg); }}
+                    100% {{ transform: rotate(360deg); }}
+                }}
+            </style>
+        """, unsafe_allow_html=True)
+    else:
+        # 작업 완료: 결과를 세션 상태에 저장하고 전체 페이지 리런
+        st.session_state.raw_text = result['raw_text']
+        st.session_state.summary = result['summary']
+        st.session_state.quiz = result['quiz']
+        st.session_state.memo_keywords = result['memo_keywords']
+        st.session_state.audio_bytes = result['audio_bytes']
+        st.session_state.pipeline_warnings = result['pipeline_warnings']
+        st.session_state.processing_job = None
+        st.session_state.processing_step = None
+        st.session_state.processing_message = ''
+        st.rerun()
+
+
 def _continue_processing() -> None:
     """세션에 적재된 문서 분석 작업을 실행한다."""
     job = st.session_state.get('processing_job')
     if not job:
         return
-
-    try:
-        with st.spinner(st.session_state.get('processing_message', '분석중입니다...')):
-            result = wait_for_analysis_job(job['job_id'])
-    except Exception as exc:
-        st.session_state.processing_job = None
-        st.session_state.processing_step = None
-        st.session_state.processing_message = ''
-        st.error(f'분석 실패: {exc}')
-        return
-
-    st.session_state.raw_text = result['raw_text']
-    st.session_state.summary = result['summary']
-    st.session_state.quiz = result['quiz']
-    st.session_state.memo_keywords = result['memo_keywords']
-    st.session_state.audio_bytes = result['audio_bytes']
-    st.session_state.pipeline_warnings = result['pipeline_warnings']
-    st.session_state.processing_job = None
-    st.session_state.processing_step = None
-    st.session_state.processing_message = ''
-    st.rerun()
+    
+    # 프래그먼트 호출 (부분 갱신 시작)
+    _render_processing_status(job['job_id'])
 
 
 def _reset():

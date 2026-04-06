@@ -4,10 +4,15 @@ import sys
 sys.path.insert(0, os.path.abspath(os.path.dirname(sys.argv[0])))
 
 import streamlit as st
+import streamlit.components.v1 as components
 from components.result_panel import render_result_panel
-from job_runner import submit_analysis_job, wait_for_analysis_job
-from pipelines import analyze_content
+from job_runner import (
+    get_analysis_job_progress,
+    get_analysis_job_result,
+    submit_analysis_job,
+)
 
+from pipelines import analyze_content
 
 _A11Y_JS = """
 <script>
@@ -88,18 +93,21 @@ _A11Y_JS = """
 
 def render() -> None:
     st.markdown('<div class="btn-sec">', unsafe_allow_html=True)
-    if st.button("ReadMate", key="back_audio"):
-        _reset(); st.rerun()
+    if st.button('ReadMate', key='back_audio'):
+        _reset()
+        st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
 
-    st.markdown('<div class="rm-page-title">🎧 강의 녹음 분석</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="rm-page-title">🎧 강의 녹음 분석</div>', unsafe_allow_html=True
+    )
 
-    if st.session_state.get("processing_job"):
+    if st.session_state.get('processing_job'):
         render_result_panel()
         _continue_processing()
-    elif not st.session_state.get("raw_text"):
-
-        st.markdown("""
+    elif not st.session_state.get('raw_text'):
+        st.markdown(
+            """
         <div class="kb-hint">
           <strong>Tab</strong> : 버튼 이동 &nbsp;|&nbsp;
           <strong>Enter</strong> : 파일 탐색기 열기<br>
@@ -107,22 +115,24 @@ def render() -> None:
           <strong>Enter</strong> &nbsp;|&nbsp;
           <strong>Backspace</strong> : 뒤로가기
         </div>
-        """, unsafe_allow_html=True)
+        """,
+            unsafe_allow_html=True,
+        )
 
         uploaded = st.file_uploader(
-            "녹음 파일 (MP3 · WAV · M4A · OGG · FLAC)",
-            type=["mp3","wav","m4a","ogg","flac"],
-            label_visibility="visible",
+            '녹음 파일 (MP3 · WAV · M4A · OGG · FLAC)',
+            type=['mp3', 'wav', 'm4a', 'ogg', 'flac'],
+            label_visibility='visible',
         )
 
         if uploaded:
-            ext = uploaded.name.split(".")[-1].lower()
-            st.audio(uploaded, format=f"audio/{ext}")
-            if st.button("분석 시작", use_container_width=True, key="run_audio"):
+            ext = uploaded.name.split('.')[-1].lower()
+            st.audio(uploaded, format=f'audio/{ext}')
+            if st.button('분석 시작', use_container_width=True, key='run_audio'):
                 _queue_processing(uploaded.name, uploaded.getvalue())
                 st.rerun()
 
-        st.components.v1.html(_A11Y_JS, height=0)
+        components.html(_A11Y_JS, height=0)
 
     else:
         render_result_panel()
@@ -131,7 +141,7 @@ def render() -> None:
 def _run(file_name: str, audio_bytes: bytes) -> bool:
     """오디오 파일을 ReadingPipeline으로 분석한다."""
     try:
-        with st.spinner("🎧 녹음 파일 분석 중..."):
+        with st.spinner('🎧 녹음 파일 분석 중...'):
             result = analyze_content(file_name=file_name, content=audio_bytes)
     except Exception as exc:
         st.error(f'분석 실패: {exc}')
@@ -161,7 +171,9 @@ def _queue_processing(file_name: str, audio_bytes: bytes) -> None:
         'input_label': '음성 인식',
     }
     st.session_state.processing_step = 'analysis'
-    st.session_state.processing_message = '분석중입니다. 음성 인식과 요약을 준비하고 있습니다.'
+    st.session_state.processing_message = (
+        '분석중입니다. 음성 인식과 요약을 준비하고 있습니다.'
+    )
     st.session_state.raw_text = ''
     st.session_state.summary = ''
     st.session_state.quiz = []
@@ -173,43 +185,92 @@ def _queue_processing(file_name: str, audio_bytes: bytes) -> None:
     st.session_state.qa_new_answer = False
 
 
+@st.fragment(run_every='1.0s')
+def _render_processing_status(job_id: str):
+    """진행 상황을 껌벅임 없이 업데이트하기 위한 프래그먼트."""
+    try:
+        result = get_analysis_job_result(job_id)
+    except Exception as exc:
+        st.error(f'분석 실패: {exc}')
+        st.session_state.processing_job = None
+        st.session_state.processing_step = None
+        st.session_state.processing_message = ''
+        st.rerun()
+        return
+
+    if result is None:
+        # 아직 진행 중: CSS 스피너와 함께 진행 메시지 표시
+        current_msg = get_analysis_job_progress(job_id)
+        st.markdown(f"""
+            <div style="display: flex; align-items: center; gap: 12px; padding: 1rem; background: #f8f9fa; border-radius: 10px; border: 1px solid #e9ecef;">
+                <div class="rm-loader"></div>
+                <div style="color: #495057; font-weight: 500;">{current_msg}</div>
+            </div>
+            <style>
+                .rm-loader {{
+                    border: 3px solid #f3f3f3;
+                    border-radius: 50%;
+                    border-top: 3px solid #ff7e5f;
+                    width: 24px;
+                    height: 24px;
+                    animation: rm-spin 1s linear infinite;
+                }}
+                @keyframes rm-spin {{
+                    0% {{ transform: rotate(0deg); }}
+                    100% {{ transform: rotate(360deg); }}
+                }}
+            </style>
+        """, unsafe_allow_html=True)
+    else:
+        # 작업 완료: 결과를 세션 상태에 저장하고 전체 페이지 리런
+        st.session_state.raw_text = result['raw_text']
+        st.session_state.summary = result['summary']
+        st.session_state.quiz = result['quiz']
+        st.session_state.memo_keywords = result['memo_keywords']
+        st.session_state.audio_bytes = result['audio_bytes']
+        st.session_state.pipeline_warnings = result['pipeline_warnings']
+        st.session_state.processing_job = None
+        st.session_state.processing_step = None
+        st.session_state.processing_message = ''
+        st.rerun()
+
+
 def _continue_processing() -> None:
     """세션에 적재된 오디오 분석 작업을 실행한다."""
     job = st.session_state.get('processing_job')
     if not job:
         return
 
-    try:
-        with st.spinner(st.session_state.get('processing_message', '분석중입니다...')):
-            result = wait_for_analysis_job(job['job_id'])
-    except Exception as exc:
-        st.session_state.processing_job = None
-        st.session_state.processing_step = None
-        st.session_state.processing_message = ''
-        st.error(f'분석 실패: {exc}')
-        return
-
-    st.session_state.raw_text = result['raw_text']
-    st.session_state.summary = result['summary']
-    st.session_state.quiz = result['quiz']
-    st.session_state.memo_keywords = result['memo_keywords']
-    st.session_state.audio_bytes = result['audio_bytes']
-    st.session_state.pipeline_warnings = result['pipeline_warnings']
-    st.session_state.processing_job = None
-    st.session_state.processing_step = None
-    st.session_state.processing_message = ''
-    st.rerun()
+    # 프래그먼트 호출 (부분 갱신 시작)
+    _render_processing_status(job['job_id'])
 
 
 def _reset():
-    for k in ["raw_text","summary","quiz","memo_keywords",
-              "qa_history","audio_bytes","active_panel","qa_new_answer",
-              "feature","pipeline_warnings","processing_job",
-              "processing_step","processing_message"]:
+    for k in [
+        'raw_text',
+        'summary',
+        'quiz',
+        'memo_keywords',
+        'qa_history',
+        'audio_bytes',
+        'active_panel',
+        'qa_new_answer',
+        'feature',
+        'pipeline_warnings',
+        'processing_job',
+        'processing_step',
+        'processing_message',
+    ]:
         st.session_state[k] = (
-            None  if k in ("audio_bytes","feature","processing_job","processing_step") else
-            []    if k in ("quiz","memo_keywords","qa_history") else
-            False if k == "qa_new_answer" else
-            []    if k == "pipeline_warnings" else
-            "summary" if k == "active_panel" else ""
+            None
+            if k in ('audio_bytes', 'feature', 'processing_job', 'processing_step')
+            else []
+            if k in ('quiz', 'memo_keywords', 'qa_history')
+            else False
+            if k == 'qa_new_answer'
+            else []
+            if k == 'pipeline_warnings'
+            else 'summary'
+            if k == 'active_panel'
+            else ''
         )

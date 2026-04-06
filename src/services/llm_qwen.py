@@ -249,8 +249,6 @@ class QwenLLM(ChunkedLLM):
                 **encoded,
                 max_new_tokens=self.max_new_tokens,
                 do_sample=False,
-                temperature=None,
-                top_p=None,
                 pad_token_id=self.tokenizer.eos_token_id,
                 eos_token_id=self.tokenizer.eos_token_id,
             )

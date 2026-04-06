@@ -61,19 +61,23 @@ class ReadingPipeline:
         self.llm = llm
         self.tts = tts
 
-    def run(self, payload: InputPayload) -> PipelineResult:
+    def run(self, payload: InputPayload, on_progress: Any | None = None) -> PipelineResult:
         """
         입력 타입에 따라 적절한 경로로 분기해 전체 파이프라인을 실행한다.
 
         Args:
             payload: 입력 파일 정보, 질문, 음성 프리셋을 포함한 요청 데이터
+            on_progress: 진행 상황을 보고할 콜백 함수 (str 인자)
 
         Returns:
             PipelineResult: 추출 텍스트, LLM 결과, TTS 결과, 경고 목록
         """
-        result = self.run_analysis(payload)
+        result = self.run_analysis(payload, on_progress=on_progress)
         if result.status is not PipelineStatus.SUCCESS or result.llm_result is None:
             return result
+
+        if on_progress:
+            on_progress('음성 합성 준비 중...')
 
         task = TaskType.QA if payload.question else TaskType.SUMMARIZE
         result.tts_result = self.synthesize_text(
@@ -83,12 +87,13 @@ class ReadingPipeline:
         )
         return result
 
-    def run_analysis(self, payload: InputPayload) -> PipelineResult:
+    def run_analysis(self, payload: InputPayload, on_progress: Any | None = None) -> PipelineResult:
         """
         입력에서 텍스트 추출과 LLM 분석까지만 실행한다.
 
         Args:
             payload: 입력 파일 정보, 질문, 음성 프리셋을 포함한 요청 데이터
+            on_progress: 진행 상황을 보고할 콜백 함수 (str 인자)
 
         Returns:
             PipelineResult: 추출 텍스트와 LLM 결과가 채워진 분석 결과
@@ -96,6 +101,14 @@ class ReadingPipeline:
         warnings: list[str] = []
 
         try:
+            if on_progress:
+                msg = (
+                    'OCR 처리 중...' if payload.input_type in (InputType.IMAGE, InputType.PDF)
+                    else '음성 인식 중...' if payload.input_type == InputType.AUDIO
+                    else '텍스트 추출 중...'
+                )
+                on_progress(msg)
+
             extracted_text, ocr_engine, stt_engine = self._extract_text(payload, warnings)
             if not extracted_text.strip():
                 return PipelineResult(
@@ -103,6 +116,9 @@ class ReadingPipeline:
                     status=PipelineStatus.FAILED,
                     warnings=['텍스트 추출 결과가 비어 있습니다.'],
                 )
+
+            if on_progress:
+                on_progress('LLM 분석 및 요약 중...')
 
             task = TaskType.QA if payload.question else TaskType.SUMMARIZE
             llm_result = self._run_llm(extracted_text, task, payload.question)
@@ -349,6 +365,7 @@ def analyze_content(
     file_name: str,
     content: bytes,
     voice_preset: str = 'default',
+    on_progress: Any | None = None,
 ) -> dict[str, object]:
     """
     파일을 기본 ReadingPipeline으로 분석하고 frontend 상태 형식으로 변환한다.
@@ -357,6 +374,7 @@ def analyze_content(
         file_name: 업로드 파일 이름
         content: 파일 원본 바이트
         voice_preset: TTS 프리셋 이름
+        on_progress: 진행 상황을 보고할 콜백 함수
 
     Returns:
         dict[str, object]: frontend 세션 상태에 바로 넣을 수 있는 값
@@ -366,7 +384,7 @@ def analyze_content(
         content=content,
         voice_preset=voice_preset,
     )
-    result = get_default_reading_pipeline().run_analysis(payload)
+    result = get_default_reading_pipeline().run_analysis(payload, on_progress=on_progress)
     return to_frontend_state(result)
 
 
