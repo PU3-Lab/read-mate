@@ -8,8 +8,8 @@ import logging
 
 import pypdf
 
-from src.models.schemas import PDFResult
-from src.services.base import BaseOCR, BasePDF
+from models.schemas import PDFResult
+from services.base import BaseOCR, BasePDF
 
 logger = logging.getLogger(__name__)
 

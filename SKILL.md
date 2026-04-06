@@ -66,7 +66,7 @@ uv pip install torch --index-url https://download.pytorch.org/whl/cu121
 ```
 
 **주의사항**
-- Streamlit 실행: `python -m streamlit run src/app.py` 권장
+- Streamlit 실행: `python -m streamlit run scripts/app.py` 권장
 - Ollama 시스템 트레이에서 자동 실행
 - OpenCV는 pip으로 자동 설치 (별도 설치 불필요)
 
@@ -93,7 +93,7 @@ uv pip install torch --index-url https://download.pytorch.org/whl/cu121
 
 **주의사항**
 - headless 서버: `opencv-python-headless` 사용
-- 외부 접근 시: `streamlit run src/app.py --server.address 0.0.0.0`
+- 외부 접근 시: `streamlit run scripts/app.py --server.address 0.0.0.0`
 - Ollama systemd 서비스 등록 가능
 
 ---
@@ -163,7 +163,7 @@ uv venv && source .venv/bin/activate
 ollama pull exaone3.5:7.8b
 
 # 앱 실행
-uv run streamlit run src/app.py
+uv run streamlit run scripts/app.py
 ```
 
 ## 업그레이드 경로

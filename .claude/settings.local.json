@@ -6,7 +6,9 @@
       "READFILE",
       "WebFetch(domain:www.paddlepaddle.org.cn)",
       "WebFetch(domain:github.com)",
-      "WebFetch(domain:pypi.org)"
+      "WebFetch(domain:pypi.org)",
+      "WebSearch",
+      "Skill(codex:rescue)"
     ]
   },
   "enabledPlugins": {

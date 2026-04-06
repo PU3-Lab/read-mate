@@ -44,8 +44,8 @@
 | **OCR** | Qwen2.5-VL-7B (4-bit 양자화) | HDX-005 (네이버 클로바) |
 | **PDF 추출** | pypdf (텍스트형) + Qwen2.5-VL (스캔형) | — |
 | **STT** | faster-whisper | — |
-| **LLM** | Qwen2.5-7B-Instruct | GPT-5.4-mini |
-| **LLM 확장** | Qwen2.5-14B-Instruct | — |
+| **LLM** | Gemma4-E4B-it | GPT-5.4-mini |
+| **LLM 확장** | Gemma4-26B-A4B-it | — |
 
 > **기본 방침:** 로컬 우선 → 성능 미달 시 API 전환
 
@@ -150,4 +150,6 @@ out   = tmp_path() / 'ocr_out.txt'  # data/tmp/ocr_out.txt
 ### 질문하는 경우 (예외)
 - 기술 스택 자체를 바꾸는 결정
 - 파이프라인 구조를 크게 변경하는 경우
+- 작업 완료 후 커밋 전 반드시 사용자 승인 후 진행 (md 파일만 변경된 경우 제외)
+- 커밋 승인 요청 전 동작 테스트 확인 필수
 - `git push` 전 반드시 사용자 승인 후 진행

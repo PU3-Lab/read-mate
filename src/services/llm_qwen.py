@@ -79,7 +79,10 @@ class QwenLLM(ChunkedLLM):
                 )
                 raw_output = self._run_inference(prompt)
                 payload = self._parse_json_output(raw_output)
-                return self._to_result(payload)
+                result = self._to_result(payload)
+                if task is TaskType.QA and not result.qa_answer:
+                    raise ValueError('QA 태스크에서 qa_answer가 비어 있습니다.')
+                return result
             except Exception as exc:
                 last_error = exc
                 logger.warning(
@@ -184,7 +187,8 @@ class QwenLLM(ChunkedLLM):
             if task is TaskType.SUMMARIZE
             else (
                 '질문에 대해 본문 근거만 사용해 답하세요. '
-                '답을 찾기 어려우면 모른다고 분명히 쓰세요.'
+                '답을 찾기 어려우면 모른다고 분명히 쓰세요. '
+                '반드시 qa_answer 필드에 답변을 작성하세요.'
             )
         )
 
@@ -204,6 +208,7 @@ class QwenLLM(ChunkedLLM):
             '규칙:\n'
             '- summary는 자연스러운 한국어 문단으로 작성합니다.\n'
             '- key_points는 중복 없이 작성합니다.\n'
+            '- QA이면 qa_answer에 반드시 답변을 작성합니다.\n'
             '- QA가 아니면 qa_answer는 null로 둡니다.\n'
             '- quiz는 현재 지원하지 않으면 null로 둡니다.\n'
             f'- 작업 지시: {task_instruction}{retry_instruction}\n\n'
