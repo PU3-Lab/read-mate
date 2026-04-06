@@ -53,7 +53,7 @@
 
 - **MeloTTS:** `transformers==4.27.4` 고정으로 `transformers>=5.3.0`과 버전 충돌 → 제외
 - **EasyOCR / PaddleOCR:** Qwen2.5-VL(VLM 기반 OCR)로 교체 — 한국어 인식률 및 복잡한 레이아웃 처리 우위
-- **XTTS v2 (coqui-tts):** 기획에서 TTS 기능 제외
+- **XTTS v2 (coqui-tts):** `coqui-tts` 패키지 버전 충돌로 제외
 
 ---
 
