@@ -6,6 +6,8 @@ ReadMate 메인 파이프라인 오케스트레이터.
 from __future__ import annotations
 
 import logging
+from functools import lru_cache
+from pathlib import Path
 
 from models.schemas import (
     InputPayload,
@@ -21,6 +23,20 @@ from models.schemas import (
 from services.base import BaseLLM, BaseOCR, BasePDF, BaseSTT, BaseTTS
 
 logger = logging.getLogger(__name__)
+
+SUPPORTED_INPUT_TYPES: dict[str, InputType] = {
+    '.png': InputType.IMAGE,
+    '.jpg': InputType.IMAGE,
+    '.jpeg': InputType.IMAGE,
+    '.webp': InputType.IMAGE,
+    '.bmp': InputType.IMAGE,
+    '.pdf': InputType.PDF,
+    '.mp3': InputType.AUDIO,
+    '.wav': InputType.AUDIO,
+    '.m4a': InputType.AUDIO,
+    '.ogg': InputType.AUDIO,
+    '.flac': InputType.AUDIO,
+}
 
 
 class ReadingPipeline:
@@ -235,3 +251,180 @@ def create_default_reading_pipeline() -> ReadingPipeline:
         llm=RemoteLLM(),
         tts=tts_engine,
     )
+
+
+@lru_cache(maxsize=1)
+def get_default_reading_pipeline() -> ReadingPipeline:
+    """기본 ReadingPipeline 인스턴스를 캐시해 재사용한다."""
+    return create_default_reading_pipeline()
+
+
+def infer_input_type(file_name: str) -> InputType:
+    """
+    파일 확장자로 파이프라인 입력 타입을 판별한다.
+
+    Args:
+        file_name: 업로드 파일 이름
+
+    Returns:
+        InputType: 파이프라인 입력 타입
+
+    Raises:
+        ValueError: 지원하지 않는 확장자일 때
+    """
+    suffix = Path(file_name).suffix.lower()
+    input_type = SUPPORTED_INPUT_TYPES.get(suffix)
+    if input_type is None:
+        raise ValueError(f'지원하지 않는 파일 형식입니다: {suffix or "(확장자 없음)"}')
+    return input_type
+
+
+def build_input_payload(
+    file_name: str,
+    content: bytes,
+    question: str | None = None,
+    voice_preset: str = 'default',
+) -> InputPayload:
+    """
+    UI 입력을 파이프라인 입력으로 변환한다.
+
+    Args:
+        file_name: 업로드 파일 이름
+        content: 파일 원본 바이트
+        question: 질문 텍스트
+        voice_preset: TTS 프리셋 이름
+
+    Returns:
+        InputPayload: 파이프라인 요청 객체
+    """
+    return InputPayload(
+        input_type=infer_input_type(file_name),
+        file_name=file_name,
+        content=content,
+        question=(question or '').strip() or None,
+        voice_preset=voice_preset.strip() or 'default',
+    )
+
+
+def analyze_content(
+    file_name: str,
+    content: bytes,
+    voice_preset: str = 'default',
+) -> dict[str, object]:
+    """
+    파일을 기본 ReadingPipeline으로 분석하고 frontend 상태 형식으로 변환한다.
+
+    Args:
+        file_name: 업로드 파일 이름
+        content: 파일 원본 바이트
+        voice_preset: TTS 프리셋 이름
+
+    Returns:
+        dict[str, object]: frontend 세션 상태에 바로 넣을 수 있는 값
+    """
+    payload = build_input_payload(
+        file_name=file_name,
+        content=content,
+        voice_preset=voice_preset,
+    )
+    result = get_default_reading_pipeline().run(payload)
+    return to_frontend_state(result)
+
+
+def answer_question(question: str, context: str) -> str:
+    """
+    기존 본문을 기반으로 질문 답변을 생성한다.
+
+    Args:
+        question: 사용자 질문
+        context: 이미 추출된 본문
+
+    Returns:
+        str: 질의응답 결과 텍스트
+    """
+    normalized_question = question.strip()
+    normalized_context = context.strip()
+    if not normalized_question:
+        raise ValueError('질문이 비어 있습니다.')
+    if not normalized_context:
+        raise ValueError('질문할 본문이 없습니다.')
+
+    llm_result = get_default_reading_pipeline().llm.generate(
+        normalized_context,
+        TaskType.QA,
+        normalized_question,
+    )
+    return (llm_result.qa_answer or llm_result.summary).strip()
+
+
+def to_frontend_state(result: PipelineResult) -> dict[str, object]:
+    """
+    파이프라인 결과를 frontend 세션 상태 구조로 변환한다.
+
+    Args:
+        result: 파이프라인 실행 결과
+
+    Returns:
+        dict[str, object]: frontend 상태 딕셔너리
+
+    Raises:
+        RuntimeError: 파이프라인 실패 또는 LLM 결과 누락 시
+    """
+    if result.status is not PipelineStatus.SUCCESS:
+        warning_text = '\n'.join(result.warnings) or '알 수 없는 오류'
+        raise RuntimeError(f'파이프라인 실행 실패: {warning_text}')
+
+    if result.llm_result is None:
+        raise RuntimeError('LLM 결과가 비어 있습니다.')
+
+    return {
+        'raw_text': result.extracted_text,
+        'summary': result.llm_result.summary,
+        'quiz': _normalize_quiz(result.llm_result.quiz),
+        'memo_keywords': result.llm_result.key_points,
+        'audio_bytes': _read_audio_bytes(result),
+        'pipeline_warnings': result.warnings,
+    }
+
+
+def _normalize_quiz(quiz: list | None) -> list[dict[str, object]]:
+    """
+    QuizItem 목록을 frontend 퀴즈 패널 형식으로 바꾼다.
+
+    Args:
+        quiz: 파이프라인 퀴즈 결과
+
+    Returns:
+        list[dict[str, object]]: frontend 퀴즈 데이터
+    """
+    if not quiz:
+        return []
+
+    return [
+        {
+            'q': item.question,
+            'options': item.options,
+            'answer': item.answer_index,
+        }
+        for item in quiz
+    ]
+
+
+def _read_audio_bytes(result: PipelineResult) -> bytes | None:
+    """
+    TTS 결과 파일을 읽어 audio bytes로 변환한다.
+
+    Args:
+        result: 파이프라인 실행 결과
+
+    Returns:
+        bytes | None: 재생 가능한 오디오 바이트
+    """
+    if result.tts_result is None:
+        return None
+
+    audio_path = Path(result.tts_result.audio_path)
+    if not audio_path.exists():
+        return None
+
+    return audio_path.read_bytes()

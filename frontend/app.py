@@ -26,6 +26,7 @@ def init():
         "memo_keywords": [],
         "qa_history":    [],
         "audio_bytes":   None,
+        "pipeline_warnings": [],
         "active_panel":  "summary",
         "qa_new_answer": False,
     }

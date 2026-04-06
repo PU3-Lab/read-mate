@@ -4,6 +4,8 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 import streamlit as st
 import streamlit.components.v1 as components
 
+from pipelines import answer_question
+
 
 _QA_HTML = """
 <style>
@@ -127,8 +129,34 @@ body{background:transparent;font-family:'Gowun Dodum',sans-serif;}
 </script>
 """
 
+_QA_BRIDGE_HTML = """
+<script>
+window.addEventListener('message', function(e){
+  if(!e.data || e.data.type!=='rm_qa' || !e.data.question) return;
+  const inputs = window.parent.document.querySelectorAll('input[type="text"]');
+  for(const input of inputs){
+    if(input.getAttribute('data-rmqa')){
+      input.value = e.data.question;
+      input.dispatchEvent(new Event('input', {bubbles:true}));
+      break;
+    }
+  }
+});
+</script>
+"""
+
 
 def render_qa_panel():
+    if 'qa_bridge' not in st.session_state:
+        st.session_state.qa_bridge = ''
+
+    if st.session_state.qa_bridge.strip():
+        st.session_state.qa_text = st.session_state.qa_bridge.strip()
+        queued_question = st.session_state.qa_bridge.strip()
+        st.session_state.qa_bridge = ''
+        _ask(queued_question)
+        return
+
     st.markdown("""
     <div class="rm-card">
       <div class="rm-card-title">💬 질의응답</div>
@@ -160,9 +188,27 @@ def render_qa_panel():
         st.session_state.qa_new_answer = False
 
     components.html(_QA_HTML, height=270, scrolling=False)
+    components.html(_QA_BRIDGE_HTML, height=0)
 
     # 보조 텍스트 입력
     st.markdown('<div style="color:var(--text-muted);font-size:.8rem;font-weight:700;text-align:center;margin:.6rem 0 .3rem;">음성 인식이 안 될 경우 직접 입력</div>', unsafe_allow_html=True)
+    st.text_input('qa_bridge', key='qa_bridge', label_visibility='collapsed')
+    components.html("""
+<script>
+(function(){
+  const inputs = window.parent.document.querySelectorAll('input[type="text"]');
+  for(const input of inputs){
+    if(input.getAttribute('aria-label') === 'qa_bridge'){
+      input.setAttribute('data-rmqa', '1');
+      input.style.position = 'absolute';
+      input.style.opacity = '0';
+      input.style.pointerEvents = 'none';
+      input.style.height = '0';
+    }
+  }
+})();
+</script>
+""", height=0)
     c1, c2 = st.columns([4,1])
     with c1:
         tq = st.text_input("직접 입력", placeholder="질문 입력 후 Enter...", label_visibility="collapsed", key="qa_text")
@@ -187,12 +233,14 @@ def render_qa_panel():
 
 
 def _ask(question: str):
-    from services.mock_service import mock_qa
     with st.spinner("답변 생성 중..."):
         try:
-            answer = mock_qa(question, st.session_state.get("raw_text",""))
-        except Exception as e:
-            answer = f"오류: {e}"
+            answer = answer_question(
+                question,
+                st.session_state.get("raw_text", ""),
+            )
+        except Exception as exc:
+            answer = f"오류: {exc}"
     st.session_state.qa_history.append({"q": question, "a": answer})
     st.session_state.qa_new_answer = True
     st.rerun()

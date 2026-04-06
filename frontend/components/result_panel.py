@@ -1,7 +1,7 @@
+import streamlit as st
 import sys, os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-import streamlit as st
 from components.tts_panel     import render_tts_panel
 from components.summary_panel import render_summary_panel
 from components.qa_panel      import render_qa_panel
@@ -13,6 +13,11 @@ def render_result_panel():
         st.session_state.active_panel = "summary"
     if "qa_new_answer" not in st.session_state:
         st.session_state.qa_new_answer = False
+    if "pipeline_warnings" not in st.session_state:
+        st.session_state.pipeline_warnings = []
+
+    if st.session_state.pipeline_warnings:
+        st.warning('\n'.join(st.session_state.pipeline_warnings))
 
     render_tts_panel()
 

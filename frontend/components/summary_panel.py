@@ -8,6 +8,7 @@ import streamlit.components.v1 as components
 def render_summary_panel():
     summary  = st.session_state.get("summary", "")
     keywords = st.session_state.get("memo_keywords", [])
+    has_quiz = bool(st.session_state.get("quiz", []))
     if not summary:
         return
 
@@ -30,17 +31,22 @@ def render_summary_panel():
             unsafe_allow_html=True)
 
     # ── 키보드 힌트 ───────────────────────────────
-    st.markdown("""
+    hint_html = """
     <div class="kb-hint">
       <strong>Q</strong> : 질의응답 &nbsp;|&nbsp;
-      <strong>P</strong> : 퀴즈 &nbsp;|&nbsp;
+    """
+    if has_quiz:
+        hint_html += '<strong>P</strong> : 퀴즈 &nbsp;|&nbsp;'
+    hint_html += """
       <strong>R</strong> : 다시 듣기 &nbsp;|&nbsp;
       <strong>Backspace</strong> : 기능 선택으로
     </div>
-    """, unsafe_allow_html=True)
+    """
+    st.markdown(hint_html, unsafe_allow_html=True)
 
     # ── 버튼 ─────────────────────────────────────
-    c1, c2, c3 = st.columns(3)
+    columns = st.columns(3 if has_quiz else 2)
+    c1, c2 = columns[0], columns[1]
     with c1:
         if st.button("다시 듣기", use_container_width=True, key="sum_r"):
             st.rerun()
@@ -48,15 +54,26 @@ def render_summary_panel():
         if st.button("질의응답", use_container_width=True, key="sum_q"):
             st.session_state.active_panel = "qa"
             st.rerun()
-    with c3:
-        if st.button("퀴즈", use_container_width=True, key="sum_p"):
-            st.session_state.active_panel = "quiz"
-            st.rerun()
+    if has_quiz:
+        with columns[2]:
+            if st.button("퀴즈", use_container_width=True, key="sum_p"):
+                st.session_state.active_panel = "quiz"
+                st.rerun()
 
     # ── 자동 낭독 + 전역 키 ───────────────────────
     kw  = ", ".join(keywords) if keywords else ""
     s   = summary.replace("\\","\\\\").replace("'","\\'").replace("\n"," ")
     k   = kw.replace("'","\\'")
+    keyboard_help = (
+        'Q를 누르면 질의응답, P를 누르면 퀴즈, R을 누르면 다시 듣기입니다.'
+        if has_quiz
+        else 'Q를 누르면 질의응답, R을 누르면 다시 듣기입니다.'
+    )
+    quiz_key_action = (
+        "speak('퀴즈로 이동합니다.', ()=>goTo('quiz'));"
+        if has_quiz
+        else "speak('현재 퀴즈가 준비되지 않았습니다.');"
+    )
 
     components.html(f"""
 <script>
@@ -80,7 +97,7 @@ def render_summary_panel():
     const texts = [
       '{s}',
       {'`핵심 키워드: ' + k + '`' if kw else "''"},
-      'Q를 누르면 질의응답, P를 누르면 퀴즈, R을 누르면 다시 듣기입니다.'
+      `{keyboard_help}`
     ].filter(t=>t.trim());
     speakQueue(texts, 0, null);
   }}
@@ -98,7 +115,7 @@ def render_summary_panel():
     const tag = e.target.tagName;
     if(tag==='INPUT'||tag==='TEXTAREA') return;
     if(e.key.toLowerCase()==='q') {{ speak('질의응답으로 이동합니다.', ()=>goTo('qa')); }}
-    if(e.key.toLowerCase()==='p') {{ speak('퀴즈로 이동합니다.', ()=>goTo('quiz')); }}
+    if(e.key.toLowerCase()==='p') {{ {quiz_key_action} }}
     if(e.key.toLowerCase()==='r') {{ readSummary(); }}
     if(e.key==='Backspace') {{ e.preventDefault(); speak('기능 선택으로 돌아갑니다.', ()=>goTo('back')); }}
   }}

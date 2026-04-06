@@ -1,10 +1,19 @@
-import sys, os
+import base64
+import io
+import os
+import sys
+
+import fitz
+from PIL import Image as PILImage
+
+if os.path.abspath(os.path.dirname(sys.argv[0])) in sys.path:
+    sys.path.remove(os.path.abspath(os.path.dirname(sys.argv[0])))
 sys.path.insert(0, os.path.abspath(os.path.dirname(sys.argv[0])))
 
 import streamlit as st
 import streamlit.components.v1 as components
 from components.result_panel import render_result_panel
-from services.mock_service   import mock_ocr, mock_llm, mock_tts
+from pipelines import analyze_content
 
 
 _INTRO_JS = """
@@ -401,32 +410,38 @@ def render():
 
             if uploaded:
                 upload_data = None
+                uploaded_bytes = uploaded.getvalue()
                 if uploaded.name.lower().endswith(".pdf"):
                     st.info(f"📄 {uploaded.name}")
-                    try:
-                        import fitz
-                        from PIL import Image as PILImage
-                        fb = uploaded.read()
-                        doc = fitz.open(stream=fb, filetype="pdf")
-                        total = len(doc)
-                        pidx = 0
-                        if total > 1:
-                            pidx = st.number_input(f"분석할 페이지 (1~{total})", 1, total, 1, 1) - 1
-                        pix = doc[pidx].get_pixmap(matrix=fitz.Matrix(1.2, 1.2))
-                        img = PILImage.frombytes("RGB", [pix.width, pix.height], pix.samples)
-                        st.image(img, caption=f"{pidx+1}/{total} 페이지", use_container_width=True)
-                        upload_data = ("pdf", fb, pidx)
-                    except ImportError:
-                        upload_data = ("pdf_raw", uploaded.read(), 0)
+                    doc = fitz.open(stream=uploaded_bytes, filetype="pdf")
+                    total = len(doc)
+                    pidx = 0
+                    if total > 1:
+                        pidx = st.number_input(
+                            f"분석할 페이지 (1~{total})",
+                            1,
+                            total,
+                            1,
+                            1,
+                        ) - 1
+                    pix = doc[pidx].get_pixmap(matrix=fitz.Matrix(1.2, 1.2))
+                    img = PILImage.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                    st.image(img, caption=f"{pidx+1}/{total} 페이지", use_container_width=True)
+                    upload_data = {
+                        "file_name": uploaded.name,
+                        "content": uploaded_bytes,
+                    }
                 else:
-                    from PIL import Image as PILImage
-                    img = PILImage.open(uploaded).convert("RGB")
+                    img = PILImage.open(io.BytesIO(uploaded_bytes)).convert("RGB")
                     st.image(img, caption="업로드된 이미지", use_container_width=True)
-                    upload_data = ("image", img, 0)
+                    upload_data = {
+                        "file_name": uploaded.name,
+                        "content": uploaded_bytes,
+                    }
 
                 if upload_data and st.button("분석 시작", use_container_width=True, key="run_upload"):
-                    _run(upload_data)
-                    st.rerun()
+                    if _run(upload_data["file_name"], upload_data["content"]):
+                        st.rerun()
 
             components.html(_UPLOAD_JS, height=0)
 
@@ -441,9 +456,6 @@ def render():
             st.markdown('</div>', unsafe_allow_html=True)
 
             if st.session_state.camera_image:
-                from PIL import Image as PILImage
-                import io, base64
-
                 st.markdown("""
                 <div class="kb-hint">
                   <strong>Enter</strong> : 분석 시작 &nbsp;|&nbsp;
@@ -464,9 +476,9 @@ def render():
                         st.rerun()
                 with c2:
                     if st.button("분석 시작 (Enter)", use_container_width=True, key="cam_use"):
-                        _run(("image", img, 0))
-                        st.session_state.camera_image = None
-                        st.rerun()
+                        if _run('camera_capture.jpg', base64.b64decode(b64)):
+                            st.session_state.camera_image = None
+                            st.rerun()
 
                 # 키 이벤트 → postMessage
                 components.html("""
@@ -518,33 +530,35 @@ def render():
                     st.rerun()
 
 
-def _run(upload_data):
-    _, data, _ = upload_data
-    with st.spinner("📄 텍스트 추출 중 (OCR)..."):
-        text = mock_ocr(data)
-    with st.spinner("🤖 AI 분석 중 (Qwen2.5)..."):
-        result = mock_llm(text)
+def _run(file_name: str, content: bytes) -> bool:
+    """문서 파일을 ReadingPipeline으로 분석한다."""
+    try:
+        with st.spinner("📄 자료 분석 중..."):
+            result = analyze_content(file_name=file_name, content=content)
+    except Exception as exc:
+        st.error(f'분석 실패: {exc}')
+        return False
 
-    st.session_state.raw_text      = text
-    st.session_state.summary       = result["summary"]
-    st.session_state.quiz          = result["quiz"]
-    st.session_state.memo_keywords = result["memo_keywords"]
-    st.session_state.qa_history    = []
-    st.session_state.active_panel  = "summary"
+    st.session_state.raw_text = result['raw_text']
+    st.session_state.summary = result['summary']
+    st.session_state.quiz = result['quiz']
+    st.session_state.memo_keywords = result['memo_keywords']
+    st.session_state.audio_bytes = result['audio_bytes']
+    st.session_state.pipeline_warnings = result['pipeline_warnings']
+    st.session_state.qa_history = []
+    st.session_state.active_panel = 'summary'
     st.session_state.qa_new_answer = False
-
-    with st.spinner("🔊 음성 합성 중..."):
-        audio = mock_tts(result["summary"])
-    st.session_state.audio_bytes = audio if audio else None
+    return True
 
 
 def _reset():
     for k in ["raw_text","summary","quiz","memo_keywords",
               "qa_history","audio_bytes","active_panel","qa_new_answer",
-              "feature","input_mode","camera_image"]:
+              "feature","input_mode","camera_image","pipeline_warnings"]:
         st.session_state[k] = (
             None  if k in ("audio_bytes","feature","input_mode","camera_image") else
             []    if k in ("quiz","memo_keywords","qa_history") else
             False if k == "qa_new_answer" else
+            []    if k == "pipeline_warnings" else
             "summary" if k == "active_panel" else ""
         )

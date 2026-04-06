@@ -1,9 +1,11 @@
-import sys, os
+import os
+import sys
+
 sys.path.insert(0, os.path.abspath(os.path.dirname(sys.argv[0])))
 
 import streamlit as st
 from components.result_panel import render_result_panel
-from services.mock_service   import mock_stt, mock_llm, mock_tts
+from pipelines import analyze_content
 
 
 _A11Y_JS = """
@@ -112,10 +114,9 @@ def render():
         if uploaded:
             ext = uploaded.name.split(".")[-1].lower()
             st.audio(uploaded, format=f"audio/{ext}")
-            audio_bytes = uploaded.read()
             if st.button("분석 시작", use_container_width=True, key="run_audio"):
-                _run(audio_bytes)
-                st.rerun()
+                if _run(uploaded.name, uploaded.getvalue()):
+                    st.rerun()
 
         st.components.v1.html(_A11Y_JS, height=0)
 
@@ -123,32 +124,35 @@ def render():
         render_result_panel()
 
 
-def _run(audio_bytes: bytes):
-    with st.spinner("🎧 음성 인식 중 (Whisper)..."):
-        text = mock_stt(audio_bytes)
+def _run(file_name: str, audio_bytes: bytes) -> bool:
+    """오디오 파일을 ReadingPipeline으로 분석한다."""
+    try:
+        with st.spinner("🎧 녹음 파일 분석 중..."):
+            result = analyze_content(file_name=file_name, content=audio_bytes)
+    except Exception as exc:
+        st.error(f'분석 실패: {exc}')
+        return False
 
-    with st.spinner("🤖 AI 분석 중 (Qwen2.5)..."):
-        result = mock_llm(text)
-
-    st.session_state.raw_text      = text
-    st.session_state.summary       = result["summary"]
-    st.session_state.quiz          = result["quiz"]
-    st.session_state.memo_keywords = result["memo_keywords"]
-    st.session_state.qa_history    = []
-    st.session_state.active_panel  = "summary"
+    st.session_state.raw_text = result['raw_text']
+    st.session_state.summary = result['summary']
+    st.session_state.quiz = result['quiz']
+    st.session_state.memo_keywords = result['memo_keywords']
+    st.session_state.audio_bytes = result['audio_bytes']
+    st.session_state.pipeline_warnings = result['pipeline_warnings']
+    st.session_state.qa_history = []
+    st.session_state.active_panel = 'summary'
     st.session_state.qa_new_answer = False
-
-    with st.spinner("🔊 음성 합성 중..."):
-        audio = mock_tts(result["summary"])
-    st.session_state.audio_bytes = audio if audio else None
+    return True
 
 
 def _reset():
     for k in ["raw_text","summary","quiz","memo_keywords",
-              "qa_history","audio_bytes","active_panel","qa_new_answer","feature"]:
+              "qa_history","audio_bytes","active_panel","qa_new_answer",
+              "feature","pipeline_warnings"]:
         st.session_state[k] = (
             None  if k in ("audio_bytes","feature") else
             []    if k in ("quiz","memo_keywords","qa_history") else
             False if k == "qa_new_answer" else
+            []    if k == "pipeline_warnings" else
             "summary" if k == "active_panel" else ""
         )
