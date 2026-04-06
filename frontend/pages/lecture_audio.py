@@ -1,8 +1,3 @@
-import os
-import sys
-
-sys.path.insert(0, os.path.abspath(os.path.dirname(sys.argv[0])))
-
 import streamlit as st
 from components.result_panel import render_result_panel
 from job_runner import (

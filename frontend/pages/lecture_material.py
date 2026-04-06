@@ -1,15 +1,7 @@
 import base64
 import io
-import os
-import sys
 
 import fitz
-from PIL import Image as PILImage
-
-if os.path.abspath(os.path.dirname(sys.argv[0])) in sys.path:
-    sys.path.remove(os.path.abspath(os.path.dirname(sys.argv[0])))
-sys.path.insert(0, os.path.abspath(os.path.dirname(sys.argv[0])))
-
 import streamlit as st
 from components.result_panel import render_result_panel
 from job_runner import (
@@ -17,6 +9,7 @@ from job_runner import (
     get_analysis_job_result,
     submit_analysis_job,
 )
+from PIL import Image as PILImage
 
 from pipelines import analyze_content
 
@@ -337,7 +330,8 @@ def render() -> None:
 
     st.markdown('<div class="btn-sec">', unsafe_allow_html=True)
     if st.button("ReadMate", key="back_material"):
-        _reset(); st.rerun()
+        _reset()
+        st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown('<div class="rm-page-title">📄 강의 자료 분석</div>', unsafe_allow_html=True)
@@ -397,7 +391,8 @@ def render() -> None:
 
             st.markdown('<div class="btn-sec">', unsafe_allow_html=True)
             if st.button("← 모드 선택", key="back_to_mode_upload"):
-                st.session_state.input_mode = None; st.rerun()
+                st.session_state.input_mode = None
+                st.rerun()
             st.markdown('</div>', unsafe_allow_html=True)
 
             st.markdown("""

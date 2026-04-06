@@ -1,9 +1,9 @@
-import importlib.util
-import os
-import pathlib
-import sys
+import importlib
 
 import streamlit as st
+from styles import inject_styles
+
+from pipelines import get_default_reading_pipeline
 
 st.set_page_config(
     page_title='Read Mate',
@@ -11,15 +11,6 @@ st.set_page_config(
     layout='centered',
     initial_sidebar_state='collapsed',
 )
-
-# frontend/ 루트를 sys.path 에 등록
-_ROOT = os.path.abspath(os.path.dirname(__file__))
-if _ROOT not in sys.path:
-    sys.path.insert(0, _ROOT)
-
-from styles import inject_styles
-
-from pipelines import get_default_reading_pipeline
 
 inject_styles()
 
@@ -58,11 +49,7 @@ init()
 
 
 def load_page(name: str):
-    path = pathlib.Path(__file__).parent / 'pages' / f'{name}.py'
-    spec = importlib.util.spec_from_file_location(name, path)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
+    return importlib.import_module(f'pages.{name}')
 
 
 # ── 헤더 ─────────────────────────────────────

@@ -1,8 +1,3 @@
-import os
-import sys
-
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
 import streamlit as st
 
 from pipelines import answer_question
@@ -232,9 +227,8 @@ def render_qa_panel():
             key='qa_text',
         )
     with c2:
-        if st.button('전송', key='qa_send', use_container_width=True):
-            if tq.strip():
-                _ask(tq.strip())
+        if st.button('전송', key='qa_send', use_container_width=True) and tq.strip():
+            _ask(tq.strip())
 
     c3, c4 = st.columns(2)
     with c3:
