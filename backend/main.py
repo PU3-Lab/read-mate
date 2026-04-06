@@ -11,11 +11,6 @@ ReadMate LLM 서버 진입점.
 from __future__ import annotations
 
 import logging
-import sys
-from pathlib import Path
-
-# src 디렉터리를 모듈 탐색 경로에 추가
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'src'))
 
 from fastapi import FastAPI
 
