@@ -8,11 +8,12 @@ from __future__ import annotations
 import json
 import logging
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 
 from api.llm_factory import get_llm
 from api.schemas import LLMResponse, WSRequest, WSResponse
 from models.schemas import TaskType
+from services.base import BaseLLM
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +21,7 @@ router = APIRouter()
 
 
 @router.websocket('/ws/chat')
-async def ws_chat(websocket: WebSocket) -> None:
+async def ws_chat(websocket: WebSocket, llm: BaseLLM = Depends(get_llm)) -> None:
     """
     WebSocket 양방향 LLM 채팅 엔드포인트.
     클라이언트는 JSON 메시지를 보내고, 서버는 결과를 JSON으로 응답한다.
@@ -37,18 +38,19 @@ async def ws_chat(websocket: WebSocket) -> None:
     try:
         while True:
             raw = await websocket.receive_text()
-            response = _handle_message(raw)
+            response = _handle_message(raw, llm)
             await websocket.send_text(response.model_dump_json())
     except WebSocketDisconnect:
         logger.info('[ws] client disconnected: %s', websocket.client)
 
 
-def _handle_message(raw: str) -> WSResponse:
+def _handle_message(raw: str, llm: BaseLLM) -> WSResponse:
     """
     WebSocket 메시지를 파싱하고 LLM을 호출해 WSResponse를 반환한다.
 
     Args:
         raw: 클라이언트가 보낸 JSON 문자열
+        llm: 주입된 LLM 엔진
 
     Returns:
         WSResponse: 결과 또는 에러 메시지
@@ -75,7 +77,7 @@ def _handle_message(raw: str) -> WSResponse:
         return WSResponse(task=req.task, error='qa task에는 question이 필요합니다.')
 
     try:
-        result = get_llm().generate(req.text, task, req.question)
+        result = llm.generate(req.text, task, req.question)
     except Exception as exc:
         logger.exception('[ws] llm failed')
         return WSResponse(task=req.task, error=str(exc))

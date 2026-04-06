@@ -11,7 +11,7 @@ import re
 from typing import Any
 
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoProcessor
 
 from core.config import (
     LLM_MAX_INPUT_CHARS,
@@ -30,7 +30,7 @@ class GemmaLLM(ChunkedLLM):
     """Gemma4 기반 ReadMate LLM 서비스."""
 
     _shared_model: AutoModelForCausalLM | None = None
-    _shared_tokenizer: AutoTokenizer | None = None
+    _shared_processor: AutoProcessor | None = None
     _shared_model_name: str | None = None
 
     def __init__(
@@ -52,7 +52,7 @@ class GemmaLLM(ChunkedLLM):
         self.max_new_tokens = max_new_tokens
         self.device = available_device()
         self.dtype = self._resolve_dtype(self.device)
-        self.tokenizer, self.model = self._get_or_load_model()
+        self.processor, self.model = self._get_or_load_model()
 
     def _generate_single(
         self, text: str, task: TaskType, question: str | None
@@ -110,19 +110,19 @@ class GemmaLLM(ChunkedLLM):
 
     def _get_or_load_model(
         self,
-    ) -> tuple[AutoTokenizer, AutoModelForCausalLM]:
+    ) -> tuple[AutoProcessor, AutoModelForCausalLM]:
         """
-        토크나이저와 모델을 싱글톤으로 로드한다.
+        프로세서와 모델을 싱글톤으로 로드한다.
 
         Returns:
-            tuple[AutoTokenizer, AutoModelForCausalLM]: 재사용 가능한 모델 객체
+            tuple[AutoProcessor, AutoModelForCausalLM]: 재사용 가능한 모델 객체
         """
         if (
             self.__class__._shared_model is not None
-            and self.__class__._shared_tokenizer is not None
+            and self.__class__._shared_processor is not None
             and self.__class__._shared_model_name == self.model_name
         ):
-            return self.__class__._shared_tokenizer, self.__class__._shared_model
+            return self.__class__._shared_processor, self.__class__._shared_model
 
         logger.info(
             '[llm:gemma] loading model=%s device=%s dtype=%s',
@@ -131,24 +131,22 @@ class GemmaLLM(ChunkedLLM):
             self.dtype,
         )
 
-        tokenizer = AutoTokenizer.from_pretrained(
+        processor = AutoProcessor.from_pretrained(
             self.model_name,
             trust_remote_code=True,
         )
-        if tokenizer.pad_token_id is None:
-            tokenizer.pad_token = tokenizer.eos_token
         model = AutoModelForCausalLM.from_pretrained(
             self.model_name,
-            torch_dtype=self.dtype,
+            dtype=self.dtype,
             trust_remote_code=True,
         )
         model.to(self.device)
         model.eval()
 
-        self.__class__._shared_tokenizer = tokenizer
+        self.__class__._shared_processor = processor
         self.__class__._shared_model = model
         self.__class__._shared_model_name = self.model_name
-        return tokenizer, model
+        return processor, model
 
     def _build_prompt(
         self,
@@ -225,16 +223,20 @@ class GemmaLLM(ChunkedLLM):
         messages = [
             {
                 'role': 'system',
-                'content': '당신은 JSON만 반환하는 정확한 도우미입니다.',
+                'content': [{'type': 'text', 'text': '당신은 JSON만 반환하는 정확한 도우미입니다.'}],
             },
-            {'role': 'user', 'content': prompt},
+            {
+                'role': 'user',
+                'content': [{'type': 'text', 'text': prompt}],
+            },
         ]
-        model_input = self.tokenizer.apply_chat_template(
+        encoded = self.processor.apply_chat_template(
             messages,
-            tokenize=False,
+            tokenize=True,
             add_generation_prompt=True,
+            return_dict=True,
+            return_tensors='pt',
         )
-        encoded = self.tokenizer(model_input, return_tensors='pt')
         encoded = {key: value.to(self.device) for key, value in encoded.items()}
         input_len = encoded['input_ids'].shape[-1]
 
@@ -243,14 +245,12 @@ class GemmaLLM(ChunkedLLM):
                 **encoded,
                 max_new_tokens=self.max_new_tokens,
                 do_sample=False,
-                temperature=None,
-                top_p=None,
-                pad_token_id=self.tokenizer.eos_token_id,
-                eos_token_id=self.tokenizer.eos_token_id,
+                pad_token_id=self.processor.tokenizer.eos_token_id,
+                eos_token_id=self.processor.tokenizer.eos_token_id,
             )
 
         generated_tokens = output[0][input_len:]
-        return self.tokenizer.decode(generated_tokens, skip_special_tokens=True).strip()
+        return self.processor.decode(generated_tokens, skip_special_tokens=True).strip()
 
     def _parse_json_output(self, raw_output: str) -> dict[str, Any]:
         """

@@ -43,8 +43,9 @@ ELEVENLABS_API_KEY: str = os.getenv('ELEVENLABS_API_KEY', '')
 # 모델명
 # ─────────────────────────────────────────
 
-LLM_MODEL_DEFAULT: str = 'google/gemma-4-4b-it'
-LLM_MODEL_LARGE: str = 'google/gemma-4-12b-it'
+LLM_ENGINE: str = os.getenv('LLM_ENGINE', 'gemma')  # gemma | qwen | openai
+LLM_MODEL_DEFAULT: str = 'google/gemma-4-E4B-it'
+LLM_MODEL_LARGE: str = 'google/gemma-4-26B-A4B-it'
 LLM_MODEL_API: str = 'gpt-4.1-mini'
 
 STT_MODEL: str = 'large-v3'  # faster-whisper 모델 크기

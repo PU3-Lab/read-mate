@@ -6,8 +6,8 @@ LLM_ENGINE 환경변수로 엔진을 선택한다: gemma (기본) | qwen | opena
 from __future__ import annotations
 
 import logging
-import os
 
+from core.config import LLM_ENGINE
 from services.base import BaseLLM
 
 logger = logging.getLogger(__name__)
@@ -32,7 +32,7 @@ def get_llm() -> BaseLLM:
     if _instance is not None:
         return _instance
 
-    engine_key = os.getenv('LLM_ENGINE', 'gemma').lower()
+    engine_key = LLM_ENGINE.lower()
     class_path = _ENGINE_MAP.get(engine_key)
     if class_path is None:
         raise ValueError(
