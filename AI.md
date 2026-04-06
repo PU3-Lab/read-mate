@@ -44,8 +44,8 @@
 | **OCR** | Qwen2.5-VL-7B (4-bit 양자화) | HDX-005 (네이버 클로바) |
 | **PDF 추출** | pypdf (텍스트형) + Qwen2.5-VL (스캔형) | — |
 | **STT** | faster-whisper | — |
-| **LLM** | Qwen2.5-7B-Instruct | GPT-5.4-mini |
-| **LLM 확장** | Qwen2.5-14B-Instruct | — |
+| **LLM** | Gemma4-E4B-it | GPT-5.4-mini |
+| **LLM 확장** | Gemma4-26B-A4B-it | — |
 
 > **기본 방침:** 로컬 우선 → 성능 미달 시 API 전환
 
