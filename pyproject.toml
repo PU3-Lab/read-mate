@@ -36,6 +36,7 @@ dependencies = [
     "yt-dlp>=2026.3.17",
     "zonos>=0.1.0.dev0",
     "zyphra>=0.1.6",
+    "pymupdf>=1.27.2.2",
 ]
 
 [build-system]
