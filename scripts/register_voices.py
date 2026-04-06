@@ -4,8 +4,6 @@ data/voices 폴더 내의 모든 음성 파일(.wav, .mp3 등)을 읽어
 화자 임베딩(.pt) 가중치 파일로 일괄 변환하여 저장합니다.
 """
 
-import os
-import sys
 
 from core.config import VOICES_DIR
 from services.tts_zonos import ZonosTTSEngine

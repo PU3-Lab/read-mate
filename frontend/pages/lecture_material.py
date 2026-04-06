@@ -2,7 +2,6 @@ import base64
 import io
 import os
 import sys
-import time
 
 import fitz
 from PIL import Image as PILImage
@@ -17,10 +16,9 @@ from job_runner import (
     get_analysis_job_progress,
     get_analysis_job_result,
     submit_analysis_job,
-    wait_for_analysis_job,
 )
-from pipelines import analyze_content
 
+from pipelines import analyze_content
 
 _INTRO_JS = """
 <script>

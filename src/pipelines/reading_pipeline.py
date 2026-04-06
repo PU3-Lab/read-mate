@@ -280,12 +280,12 @@ def create_default_reading_pipeline() -> ReadingPipeline:
     Returns:
         ReadingPipeline: 기본 서비스 조합이 연결된 오케스트레이터
     """
+    from services.llm_remote import RemoteLLM
     from services.ocr_service import Qwen2VLEngine
     from services.pdf_service import PyPDFEngine
-    from services.llm_remote import RemoteLLM
     from services.stt_whisper_service import ReadMateSTT
-    from services.tts_zonos import ZonosTTSEngine
     from services.tts_unavailable import UnavailableTTSEngine
+    from services.tts_zonos import ZonosTTSEngine
 
     ocr = Qwen2VLEngine()
     try:

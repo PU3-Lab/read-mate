@@ -29,7 +29,7 @@ def render_result_panel():
 
     if st.session_state.processing_step:
         # 진행 상황은 lecture_material.py / lecture_audio.py의 fragment가 직접 렌더링함
-        return 
+        return
 
     panel = st.session_state.active_panel
 

@@ -164,7 +164,7 @@ def test_reading_pipeline_uses_qa_answer_for_tts() -> None:
         InputPayload(
             input_type=InputType.QUESTION,
             file_name='context.txt',
-            content='문맥 본문'.encode('utf-8'),
+            content='문맥 본문'.encode(),
             question='핵심이 뭐야?',
         )
     )

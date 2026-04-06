@@ -2,7 +2,6 @@
 Zonos TTS 목소리 확인용 테스트 스크립트.
 """
 
-import os
 import subprocess
 import sys
 
