@@ -28,4 +28,4 @@ echo "  앱 주소       : http://localhost:$PORT"
 echo "  LLM 서버 주소 : ${LLM_SERVER_URL:-http://localhost:8000}"
 echo ""
 
-uv run streamlit run scripts/app.py --server.port "$PORT"
+uv run streamlit run frontend/app.py --server.port "$PORT"

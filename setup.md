@@ -75,7 +75,7 @@ LLM_SERVER_URL=http://localhost:8001 ./scripts/start_app.sh
 
 ```bash
 uv run uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
-uv run streamlit run scripts/app.py --server.port 8501
+uv run streamlit run frontend/app.py --server.port 8501
 ```
 
 ## 6. 확인용 테스트

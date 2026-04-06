@@ -33,6 +33,6 @@ if defined LLM_SERVER_URL (
 )
 echo.
 
-uv run streamlit run scripts/app.py --server.port %PORT%
+uv run streamlit run frontend/app.py --server.port %PORT%
 
 endlocal
