@@ -6,7 +6,6 @@ ReadMate 공통 설정.
 from __future__ import annotations
 
 import os
-import tempfile
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -19,16 +18,17 @@ from pyprojroot import here
 ROOT: Path = here()
 load_dotenv(ROOT / '.env')
 
+from lib.utils.path import data_path, embeddings_path, model_path, tmp_path, voices_path
+
 # ─────────────────────────────────────────
 # 경로
 # ─────────────────────────────────────────
 
-DATA_DIR: Path = ROOT / 'data'
-MODEL_DIR: Path = DATA_DIR / 'models'
-TMP_DIR: Path = Path(tempfile.gettempdir()) / 'readmate'
-
-for _dir in (DATA_DIR, MODEL_DIR, TMP_DIR):
-    _dir.mkdir(parents=True, exist_ok=True)
+DATA_DIR: Path = data_path()
+MODEL_DIR: Path = model_path()
+TMP_DIR: Path = tmp_path()
+VOICES_DIR: Path = voices_path()
+EMBEDDINGS_DIR: Path = embeddings_path()
 
 # ─────────────────────────────────────────
 # API 키
@@ -43,13 +43,16 @@ ELEVENLABS_API_KEY: str = os.getenv('ELEVENLABS_API_KEY', '')
 # 모델명
 # ─────────────────────────────────────────
 
-LLM_MODEL_DEFAULT: str = 'Qwen/Qwen2.5-7B-Instruct'
-LLM_MODEL_LARGE: str = 'Qwen/Qwen2.5-14B-Instruct'
+LLM_ENGINE: str = os.getenv('LLM_ENGINE', 'gemma')  # gemma | qwen | openai
+LLM_SERVER_URL: str = os.getenv('LLM_SERVER_URL', 'http://localhost:8000')
+LLM_MODEL_DEFAULT: str = 'google/gemma-4-E4B-it'
+LLM_MODEL_LARGE: str = 'google/gemma-4-26B-A4B-it'
 LLM_MODEL_API: str = 'gpt-4.1-mini'
 
 STT_MODEL: str = 'large-v3'  # faster-whisper 모델 크기
 
 TTS_MODEL: str = 'tts_models/multilingual/multi-dataset/xtts_v2'
+ZONOS_MODEL: str = 'Zyphra/Zonos-v0.1-transformer'
 
 # ─────────────────────────────────────────
 # 파이프라인 임계값
