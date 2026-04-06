@@ -13,6 +13,7 @@ sys.path.insert(0, os.path.abspath(os.path.dirname(sys.argv[0])))
 import streamlit as st
 import streamlit.components.v1 as components
 from components.result_panel import render_result_panel
+from job_runner import submit_analysis_job, wait_for_analysis_job
 from pipelines import analyze_content
 
 
@@ -326,7 +327,7 @@ window.addEventListener('message', function(e){
 """
 
 
-def render():
+def render() -> None:
     for k, v in [("input_mode", None), ("camera_image", None)]:
         if k not in st.session_state:
             st.session_state[k] = v
@@ -341,7 +342,11 @@ def render():
     # 공통 브릿지 (항상 렌더)
     components.html(_BRIDGE_JS, height=0)
 
-    if st.session_state.get("raw_text"):
+    if st.session_state.get("processing_job"):
+        render_result_panel()
+        _continue_processing()
+
+    elif st.session_state.get("raw_text"):
         render_result_panel()
 
     else:
@@ -440,8 +445,8 @@ def render():
                     }
 
                 if upload_data and st.button("분석 시작", use_container_width=True, key="run_upload"):
-                    if _run(upload_data["file_name"], upload_data["content"]):
-                        st.rerun()
+                    _queue_processing(upload_data["file_name"], upload_data["content"])
+                    st.rerun()
 
             components.html(_UPLOAD_JS, height=0)
 
@@ -476,9 +481,9 @@ def render():
                         st.rerun()
                 with c2:
                     if st.button("분석 시작 (Enter)", use_container_width=True, key="cam_use"):
-                        if _run('camera_capture.jpg', base64.b64decode(b64)):
-                            st.session_state.camera_image = None
-                            st.rerun()
+                        _queue_processing('camera_capture.jpg', base64.b64decode(b64))
+                        st.session_state.camera_image = None
+                        st.rerun()
 
                 # 키 이벤트 → postMessage
                 components.html("""
@@ -551,12 +556,72 @@ def _run(file_name: str, content: bytes) -> bool:
     return True
 
 
+def _queue_processing(file_name: str, content: bytes) -> None:
+    """문서 분석 작업을 세션 상태에 적재한다."""
+    job_id = submit_analysis_job(
+        file_name=file_name,
+        content=content,
+        voice_preset='default',
+    )
+    st.session_state.processing_job = {
+        'job_id': job_id,
+        'input_label': 'OCR 처리',
+    }
+    st.session_state.processing_step = 'analysis'
+    st.session_state.processing_message = '분석중입니다. OCR 처리와 요약을 준비하고 있습니다.'
+    st.session_state.raw_text = ''
+    st.session_state.summary = ''
+    st.session_state.quiz = []
+    st.session_state.memo_keywords = []
+    st.session_state.audio_bytes = None
+    st.session_state.pipeline_warnings = []
+    st.session_state.qa_history = []
+    st.session_state.active_panel = 'summary'
+    st.session_state.qa_new_answer = False
+
+
+def _continue_processing() -> None:
+    """세션에 적재된 문서 분석 작업을 실행한다."""
+    job = st.session_state.get('processing_job')
+    if not job:
+        return
+
+    try:
+        with st.spinner(st.session_state.get('processing_message', '분석중입니다...')):
+            result = wait_for_analysis_job(job['job_id'])
+    except Exception as exc:
+        st.session_state.processing_job = None
+        st.session_state.processing_step = None
+        st.session_state.processing_message = ''
+        st.error(f'분석 실패: {exc}')
+        return
+
+    st.session_state.raw_text = result['raw_text']
+    st.session_state.summary = result['summary']
+    st.session_state.quiz = result['quiz']
+    st.session_state.memo_keywords = result['memo_keywords']
+    st.session_state.audio_bytes = result['audio_bytes']
+    st.session_state.pipeline_warnings = result['pipeline_warnings']
+    st.session_state.processing_job = None
+    st.session_state.processing_step = None
+    st.session_state.processing_message = ''
+    st.rerun()
+
+
 def _reset():
     for k in ["raw_text","summary","quiz","memo_keywords",
               "qa_history","audio_bytes","active_panel","qa_new_answer",
-              "feature","input_mode","camera_image","pipeline_warnings"]:
+              "feature","input_mode","camera_image","pipeline_warnings",
+              "processing_job","processing_step","processing_message"]:
         st.session_state[k] = (
-            None  if k in ("audio_bytes","feature","input_mode","camera_image") else
+            None  if k in (
+                "audio_bytes",
+                "feature",
+                "input_mode",
+                "camera_image",
+                "processing_job",
+                "processing_step",
+            ) else
             []    if k in ("quiz","memo_keywords","qa_history") else
             False if k == "qa_new_answer" else
             []    if k == "pipeline_warnings" else

@@ -5,6 +5,7 @@ sys.path.insert(0, os.path.abspath(os.path.dirname(sys.argv[0])))
 
 import streamlit as st
 from components.result_panel import render_result_panel
+from job_runner import submit_analysis_job, wait_for_analysis_job
 from pipelines import analyze_content
 
 
@@ -85,7 +86,7 @@ _A11Y_JS = """
 """
 
 
-def render():
+def render() -> None:
     st.markdown('<div class="btn-sec">', unsafe_allow_html=True)
     if st.button("ReadMate", key="back_audio"):
         _reset(); st.rerun()
@@ -93,7 +94,10 @@ def render():
 
     st.markdown('<div class="rm-page-title">🎧 강의 녹음 분석</div>', unsafe_allow_html=True)
 
-    if not st.session_state.get("raw_text"):
+    if st.session_state.get("processing_job"):
+        render_result_panel()
+        _continue_processing()
+    elif not st.session_state.get("raw_text"):
 
         st.markdown("""
         <div class="kb-hint">
@@ -115,8 +119,8 @@ def render():
             ext = uploaded.name.split(".")[-1].lower()
             st.audio(uploaded, format=f"audio/{ext}")
             if st.button("분석 시작", use_container_width=True, key="run_audio"):
-                if _run(uploaded.name, uploaded.getvalue()):
-                    st.rerun()
+                _queue_processing(uploaded.name, uploaded.getvalue())
+                st.rerun()
 
         st.components.v1.html(_A11Y_JS, height=0)
 
@@ -145,12 +149,65 @@ def _run(file_name: str, audio_bytes: bytes) -> bool:
     return True
 
 
+def _queue_processing(file_name: str, audio_bytes: bytes) -> None:
+    """오디오 분석 작업을 세션 상태에 적재한다."""
+    job_id = submit_analysis_job(
+        file_name=file_name,
+        content=audio_bytes,
+        voice_preset='default',
+    )
+    st.session_state.processing_job = {
+        'job_id': job_id,
+        'input_label': '음성 인식',
+    }
+    st.session_state.processing_step = 'analysis'
+    st.session_state.processing_message = '분석중입니다. 음성 인식과 요약을 준비하고 있습니다.'
+    st.session_state.raw_text = ''
+    st.session_state.summary = ''
+    st.session_state.quiz = []
+    st.session_state.memo_keywords = []
+    st.session_state.audio_bytes = None
+    st.session_state.pipeline_warnings = []
+    st.session_state.qa_history = []
+    st.session_state.active_panel = 'summary'
+    st.session_state.qa_new_answer = False
+
+
+def _continue_processing() -> None:
+    """세션에 적재된 오디오 분석 작업을 실행한다."""
+    job = st.session_state.get('processing_job')
+    if not job:
+        return
+
+    try:
+        with st.spinner(st.session_state.get('processing_message', '분석중입니다...')):
+            result = wait_for_analysis_job(job['job_id'])
+    except Exception as exc:
+        st.session_state.processing_job = None
+        st.session_state.processing_step = None
+        st.session_state.processing_message = ''
+        st.error(f'분석 실패: {exc}')
+        return
+
+    st.session_state.raw_text = result['raw_text']
+    st.session_state.summary = result['summary']
+    st.session_state.quiz = result['quiz']
+    st.session_state.memo_keywords = result['memo_keywords']
+    st.session_state.audio_bytes = result['audio_bytes']
+    st.session_state.pipeline_warnings = result['pipeline_warnings']
+    st.session_state.processing_job = None
+    st.session_state.processing_step = None
+    st.session_state.processing_message = ''
+    st.rerun()
+
+
 def _reset():
     for k in ["raw_text","summary","quiz","memo_keywords",
               "qa_history","audio_bytes","active_panel","qa_new_answer",
-              "feature","pipeline_warnings"]:
+              "feature","pipeline_warnings","processing_job",
+              "processing_step","processing_message"]:
         st.session_state[k] = (
-            None  if k in ("audio_bytes","feature") else
+            None  if k in ("audio_bytes","feature","processing_job","processing_step") else
             []    if k in ("quiz","memo_keywords","qa_history") else
             False if k == "qa_new_answer" else
             []    if k == "pipeline_warnings" else

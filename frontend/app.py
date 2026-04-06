@@ -1,5 +1,11 @@
+import asyncio
+import importlib.util
+import inspect
+import os
+import pathlib
+import sys
+
 import streamlit as st
-import sys, os, importlib.util, pathlib
 
 st.set_page_config(
     page_title="Read Mate",
@@ -27,6 +33,9 @@ def init():
         "qa_history":    [],
         "audio_bytes":   None,
         "pipeline_warnings": [],
+        "processing_job": None,
+        "processing_step": None,
+        "processing_message": "",
         "active_panel":  "summary",
         "qa_new_answer": False,
     }

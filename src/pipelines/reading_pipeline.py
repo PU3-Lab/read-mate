@@ -71,6 +71,28 @@ class ReadingPipeline:
         Returns:
             PipelineResult: 추출 텍스트, LLM 결과, TTS 결과, 경고 목록
         """
+        result = self.run_analysis(payload)
+        if result.status is not PipelineStatus.SUCCESS or result.llm_result is None:
+            return result
+
+        task = TaskType.QA if payload.question else TaskType.SUMMARIZE
+        result.tts_result = self.synthesize_text(
+            self._build_tts_input(result.llm_result, task),
+            payload.voice_preset,
+            result.warnings,
+        )
+        return result
+
+    def run_analysis(self, payload: InputPayload) -> PipelineResult:
+        """
+        입력에서 텍스트 추출과 LLM 분석까지만 실행한다.
+
+        Args:
+            payload: 입력 파일 정보, 질문, 음성 프리셋을 포함한 요청 데이터
+
+        Returns:
+            PipelineResult: 추출 텍스트와 LLM 결과가 채워진 분석 결과
+        """
         warnings: list[str] = []
 
         try:
@@ -85,13 +107,10 @@ class ReadingPipeline:
             task = TaskType.QA if payload.question else TaskType.SUMMARIZE
             llm_result = self._run_llm(extracted_text, task, payload.question)
 
-            tts_input = self._build_tts_input(llm_result, task)
-            tts_result = self._run_tts(tts_input, payload.voice_preset, warnings)
-
             return PipelineResult(
                 extracted_text=extracted_text,
                 llm_result=llm_result,
-                tts_result=tts_result,
+                tts_result=None,
                 ocr_engine=ocr_engine,
                 stt_engine=stt_engine,
                 status=PipelineStatus.SUCCESS,
@@ -104,6 +123,26 @@ class ReadingPipeline:
                 status=PipelineStatus.FAILED,
                 warnings=[f'파이프라인 오류: {exc}'],
             )
+
+    def synthesize_text(
+        self,
+        text: str,
+        voice_preset: str = 'default',
+        warnings: list[str] | None = None,
+    ) -> TTSResult | None:
+        """
+        주어진 텍스트로 TTS를 실행한다.
+
+        Args:
+            text: 음성으로 합성할 텍스트
+            voice_preset: 사용할 프리셋 목소리
+            warnings: 실패 시 경고를 누적할 목록
+
+        Returns:
+            TTSResult | None: 성공 시 TTS 결과, 실패 시 None
+        """
+        warning_list = warnings if warnings is not None else []
+        return self._run_tts(text, voice_preset, warning_list)
 
     def _extract_text(
         self,
@@ -327,8 +366,49 @@ def analyze_content(
         content=content,
         voice_preset=voice_preset,
     )
-    result = get_default_reading_pipeline().run(payload)
+    result = get_default_reading_pipeline().run_analysis(payload)
     return to_frontend_state(result)
+
+
+def synthesize_summary_audio(
+    summary: str,
+    voice_preset: str = 'default',
+) -> dict[str, object]:
+    """
+    요약 텍스트를 음성으로 합성해 frontend 상태 형식으로 돌려준다.
+
+    Args:
+        summary: 요약 본문 텍스트
+        voice_preset: TTS 프리셋 이름
+
+    Returns:
+        dict[str, object]: audio bytes와 경고 목록
+    """
+    warnings: list[str] = []
+    normalized_summary = summary.strip()
+    if not normalized_summary:
+        return {
+            'audio_bytes': None,
+            'pipeline_warnings': ['TTS 생성할 요약이 비어 있습니다.'],
+        }
+
+    tts_result = get_default_reading_pipeline().synthesize_text(
+        normalized_summary,
+        voice_preset=voice_preset,
+        warnings=warnings,
+    )
+    if tts_result is None:
+        return {
+            'audio_bytes': None,
+            'pipeline_warnings': warnings,
+        }
+
+    audio_path = Path(tts_result.audio_path)
+    audio_bytes = audio_path.read_bytes() if audio_path.exists() else None
+    return {
+        'audio_bytes': audio_bytes,
+        'pipeline_warnings': warnings,
+    }
 
 
 def answer_question(question: str, context: str) -> str:

@@ -8,6 +8,7 @@ from pipelines.reading_pipeline import (
     create_default_reading_pipeline,
     get_default_reading_pipeline,
     infer_input_type,
+    synthesize_summary_audio,
     to_frontend_state,
 )
 
@@ -19,5 +20,6 @@ __all__ = [
     'create_default_reading_pipeline',
     'get_default_reading_pipeline',
     'infer_input_type',
+    'synthesize_summary_audio',
     'to_frontend_state',
 ]

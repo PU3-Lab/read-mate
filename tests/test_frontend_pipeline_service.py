@@ -129,6 +129,46 @@ def test_answer_question_uses_pipeline_llm(monkeypatch: pytest.MonkeyPatch) -> N
     assert fake_pipeline.llm.calls[0][2] == '질문'
 
 
+def test_synthesize_summary_audio_reads_generated_file(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """요약 TTS 생성 결과를 audio bytes로 돌려준다."""
+
+    class FakePipelineWithTTS(FakePipeline):
+        def synthesize_text(
+            self,
+            text: str,
+            voice_preset: str = 'default',
+            warnings: list[str] | None = None,
+        ) -> TTSResult:
+            audio_path = tmp_path / 'summary.wav'
+            audio_path.write_bytes(b'summary-audio')
+            return TTSResult(
+                audio_path=str(audio_path),
+                voice_preset=voice_preset,
+                engine='fake-tts',
+                duration_sec=0.8,
+            )
+
+    fake_pipeline = FakePipelineWithTTS(
+        PipelineResult(
+            extracted_text='',
+            status=PipelineStatus.SUCCESS,
+        )
+    )
+    monkeypatch.setattr(
+        pipeline_service,
+        'get_default_reading_pipeline',
+        lambda: fake_pipeline,
+    )
+
+    state = pipeline_service.synthesize_summary_audio('요약 본문')
+
+    assert state['audio_bytes'] == b'summary-audio'
+    assert state['pipeline_warnings'] == []
+
+
 def test_to_frontend_state_raises_on_failed_pipeline() -> None:
     """파이프라인 실패는 예외로 올린다."""
     result = PipelineResult(
