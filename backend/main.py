@@ -16,9 +16,9 @@ from typing import AsyncGenerator
 
 from fastapi import FastAPI
 
-from api.llm_factory import get_llm
-from api.routes.http import router as http_router
-from api.routes.websocket import router as ws_router
+from api.llm_factory import create_llm
+from api.routes import http as http_routes
+from api.routes import websocket as ws_routes
 
 logging.basicConfig(
     level=logging.INFO,
@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """서버 시작 시 LLM 모델을 로드하고, 종료 시 정리한다."""
     logger.info('[startup] LLM 모델 로드 시작')
-    get_llm()
+    app.state.llm = create_llm()
     logger.info('[startup] LLM 모델 로드 완료')
     yield
     logger.info('[shutdown] 서버 종료')
@@ -45,8 +45,8 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-app.include_router(http_router)
-app.include_router(ws_router)
+app.include_router(http_routes.router)
+app.include_router(ws_routes.router)
 
 
 @app.get('/health')

@@ -148,10 +148,12 @@ def print_summary(all_results: dict) -> None:
 
 
 ENGINE_DEFAULTS = {
-    'gemma': 'google/gemma-3-4b-it',
+    'gemma': 'google/gemma-4-E4B-it',
     'qwen': 'Qwen/Qwen2.5-7B-Instruct',
     'gpt': 'gpt-4.1-mini',
 }
+
+ALL_ENGINES = list(ENGINE_DEFAULTS.keys())
 
 
 def build_llm(engine: str, model: str | None) -> ChunkedLLM:
@@ -168,9 +170,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description='LLM 실 추론 테스트')
     parser.add_argument(
         '--engine',
-        choices=['gemma', 'qwen', 'gpt'],
+        choices=[*ALL_ENGINES, 'all'],
         default='gemma',
-        help='사용할 엔진 (기본: gemma)',
+        help='사용할 엔진 (기본: gemma, all: 전체)',
     )
     with open(data_path() / 'sample_texts.json', encoding='utf-8') as f:
         samples_dict = json.loads(f.read())
@@ -182,26 +184,31 @@ def main() -> None:
     parser.add_argument('--model', default=None, help='엔진 기본값 대신 사용할 모델명')
     args = parser.parse_args()
 
-    model_name = args.model or ENGINE_DEFAULTS[args.engine]
-    print('\n🚀 LLM 실 테스트 시작')
-    print(f'   엔진: {args.engine}')
-    print(f'   모델: {model_name}')
-    print(f'   모드: 요약{"+ QA" if args.qa else ""}')
-
-    t_load = time.perf_counter()
-    llm = build_llm(args.engine, args.model)
-    print(f'   준비 완료: {time.perf_counter() - t_load:.1f}s')
-
+    engines = ALL_ENGINES if args.engine == 'all' else [args.engine]
     targets = {args.sample: samples_dict[args.sample]} if args.sample else samples_dict
 
+    print('\n🚀 LLM 실 테스트 시작')
+    print(f'   엔진: {", ".join(engines)}')
+    print(f'   모드: 요약{"+ QA" if args.qa else ""}')
+
     all_results: dict = {}
-    for key, sample in targets.items():
-        all_results[key] = {}
-        all_results[key]['summarize'] = run_summarize(llm, key, sample)
-        if args.qa:
-            qa = run_qa(llm, key, sample)
-            if qa:
-                all_results[key]['qa'] = qa
+    for engine in engines:
+        model_name = args.model or ENGINE_DEFAULTS[engine]
+        print(f'\n{"═" * 55}')
+        print(f'  엔진: {engine}  /  모델: {model_name}')
+
+        t_load = time.perf_counter()
+        llm = build_llm(engine, args.model)
+        print(f'  준비 완료: {time.perf_counter() - t_load:.1f}s')
+
+        for key, sample in targets.items():
+            result_key = f'{engine}/{key}'
+            all_results[result_key] = {}
+            all_results[result_key]['summarize'] = run_summarize(llm, key, sample)
+            if args.qa:
+                qa_res = run_qa(llm, key, sample)
+                if qa_res:
+                    all_results[result_key]['qa'] = qa_res
 
     print_summary(all_results)
 

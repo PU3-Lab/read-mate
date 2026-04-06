@@ -8,9 +8,8 @@ from __future__ import annotations
 import json
 import logging
 
-from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from api.llm_factory import get_llm
 from api.schemas import LLMResponse, WSRequest, WSResponse
 from models.schemas import TaskType
 from services.base import BaseLLM
@@ -21,7 +20,7 @@ router = APIRouter()
 
 
 @router.websocket('/ws/chat')
-async def ws_chat(websocket: WebSocket, llm: BaseLLM = Depends(get_llm)) -> None:
+async def ws_chat(websocket: WebSocket) -> None:
     """
     WebSocket 양방향 LLM 채팅 엔드포인트.
     클라이언트는 JSON 메시지를 보내고, 서버는 결과를 JSON으로 응답한다.
@@ -34,6 +33,8 @@ async def ws_chat(websocket: WebSocket, llm: BaseLLM = Depends(get_llm)) -> None
     """
     await websocket.accept()
     logger.info('[ws] client connected: %s', websocket.client)
+
+    llm: BaseLLM = websocket.app.state.llm
 
     try:
         while True:
@@ -50,7 +51,7 @@ def _handle_message(raw: str, llm: BaseLLM) -> WSResponse:
 
     Args:
         raw: 클라이언트가 보낸 JSON 문자열
-        llm: 주입된 LLM 엔진
+        llm: LLM 엔진 인스턴스
 
     Returns:
         WSResponse: 결과 또는 에러 메시지

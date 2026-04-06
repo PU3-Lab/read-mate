@@ -5,6 +5,7 @@ LLM_ENGINE 환경변수로 엔진을 선택한다: gemma (기본) | qwen | opena
 
 from __future__ import annotations
 
+import importlib
 import logging
 
 from core.config import LLM_ENGINE
@@ -18,20 +19,14 @@ _ENGINE_MAP = {
     'openai': 'services.llm_openai.OpenAILLM',
 }
 
-_instance: BaseLLM | None = None
 
-
-def get_llm() -> BaseLLM:
+def create_llm() -> BaseLLM:
     """
-    LLM_ENGINE 환경변수에 따라 LLM 싱글톤을 반환한다.
+    LLM_ENGINE 환경변수에 따라 LLM 인스턴스를 생성한다.
 
     Returns:
         BaseLLM: 선택된 LLM 엔진 인스턴스
     """
-    global _instance
-    if _instance is not None:
-        return _instance
-
     engine_key = LLM_ENGINE.lower()
     class_path = _ENGINE_MAP.get(engine_key)
     if class_path is None:
@@ -41,10 +36,10 @@ def get_llm() -> BaseLLM:
         )
 
     module_path, class_name = class_path.rsplit('.', 1)
-    import importlib
     module = importlib.import_module(module_path)
     cls = getattr(module, class_name)
 
     logger.info('[llm-factory] engine=%s class=%s', engine_key, class_name)
-    _instance = cls()
-    return _instance
+    return cls()
+
+
