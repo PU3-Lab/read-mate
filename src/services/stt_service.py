@@ -9,6 +9,8 @@ import logging
 import uuid
 from pathlib import Path
 
+from faster_whisper import WhisperModel
+
 from core.config import STT_MODEL, TMP_DIR
 from core.exceptions import STTError
 from lib.utils.device import available_device
@@ -36,8 +38,6 @@ class FasterWhisperEngine(BaseSTT):
     def __init__(self, model_size: str = STT_MODEL) -> None:
         if self._model is not None:
             return
-        from faster_whisper import WhisperModel
-
         device = self._resolve_device()
         compute_type = 'float32' if device == 'cpu' else 'bfloat16'
 

@@ -57,6 +57,7 @@ url = "https://download.pytorch.org/whl/cu126" # 본인의 CUDA 버전에 맞춤
 explicit = true
 
 [tool.uv.sources]
+zonos = { git = "https://github.com/Zyphra/Zonos.git" }
 torch = [
   { index = "pytorch-gpu", marker = "sys_platform == 'win32'" },
   { index = "pytorch-gpu", marker = "sys_platform == 'linux'" },

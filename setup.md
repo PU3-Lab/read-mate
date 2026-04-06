@@ -75,11 +75,50 @@ LLM_SERVER_URL=http://localhost:8001 ./scripts/start_app.sh
 
 ```bash
 uv run uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
-uv run streamlit run scripts/app.py --server.port 8501
+uv run streamlit run frontend/app.py --server.port 8501
 ```
 
 ## 6. 확인용 테스트
 
 ```bash
 uv run pytest tests/test_app.py tests/test_llm_remote.py tests/test_reading_pipeline.py
+```
+
+## Zonos 추가 요구사항
+
+`Zonos`는 일반 Python 패키지만으로 끝나지 않고 시스템 라이브러리와 공식 소스 설치가 추가로 필요하다.
+
+### 1. eSpeak 설치
+
+macOS
+```bash
+brew install espeak-ng
+```
+
+Ubuntu / Debian
+```bash
+sudo apt install -y espeak-ng
+```
+
+Windows
+```text
+eSpeak NG를 수동 설치하고 필요하면 PHONEMIZER_ESPEAK_LIBRARY 환경변수를 설정
+```
+
+### 2. 공식 Zonos 소스 설치
+
+PyPI wheel 대신 공식 저장소 소스 설치를 권장한다.
+
+```bash
+git clone https://github.com/Zyphra/Zonos.git /tmp/Zonos
+uv pip install -e /tmp/Zonos
+```
+
+### 3. 확인
+
+```bash
+uv run python - <<'PY'
+from zonos.model import Zonos
+print('OK', Zonos)
+PY
 ```
