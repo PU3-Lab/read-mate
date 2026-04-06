@@ -4,7 +4,7 @@
 
 ## 현재 실행 구조
 
-- 앱 UI: `scripts/app.py`
+- 앱 UI: `frontend/app.py`
 - 앱 오케스트레이터: `src/pipelines/reading_pipeline.py`
 - LLM 서버: `backend/main.py`
 - LLM 연결 방식: 앱 -> HTTP API (`LLM_SERVER_URL`) -> LLM 서버
