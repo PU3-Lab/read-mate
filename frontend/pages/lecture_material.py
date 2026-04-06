@@ -179,8 +179,8 @@ canvas{display:none;}
   <img id="preview" alt="촬영된 이미지">
   <div class="btn-row">
     <button class="cbtn pri" id="snap">📸 촬영 (Space)</button>
-    <button class="cbtn sec" id="retry" style="display:none">🔄 다시 촬영 (R)</button>
-    <button class="cbtn pri" id="use"   style="display:none">✅ 분석 시작 (Enter)</button>
+    <button class="cbtn sec" id="retry" style="display:none">다시 촬영 (R)</button>
+    <button class="cbtn pri" id="use"   style="display:none">분석 시작 (Enter)</button>
   </div>
   <div id="hint">
     <strong>Space</strong> : 촬영 &nbsp;|&nbsp;
@@ -237,7 +237,7 @@ canvas{display:none;}
     retry.style.display = '';
     use.style.display   = '';
     captured = true;
-    status.textContent = '✅ 촬영 완료! 이미지를 확인하세요.';
+    status.textContent = '촬영 완료! 이미지를 확인하세요.';
     speak('촬영되었습니다. Enter 를 누르면 분석을 시작합니다. R 을 누르면 다시 촬영합니다.');
     window.parent.postMessage({type:'rm_camera', dataUrl:dataUrl}, '*');
   }
