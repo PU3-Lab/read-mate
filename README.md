@@ -62,3 +62,13 @@ python scripts/run_llm_check.py --engine qwen --sample history_printing
 python scripts/run_llm_check.py --engine gpt --sample study_memory --qa
 python scripts/run_llm_check.py --list-samples
 ```
+
+## MVP 체크리스트
+
+- [x] 환경 구축 및 Qwen2.5-7B 실행 확인
+- [x] Qwen2.5-VL OCR 문서 이미지 인식 테스트
+- [x] PDF 텍스트 추출 및 요약 (pypdf + OCR 분기)
+- [x] faster-whisper STT 오디오 변환 테스트
+- [x] LLM 프롬프트 튜닝 (요약/정리/질의응답 JSON 출력)
+- [ ] Streamlit 전체 파이프라인 연결
+- [ ] 로컬 리소스 최적화 (OCR 후 VL 모델 언로드)
