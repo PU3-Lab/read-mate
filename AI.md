@@ -1,4 +1,9 @@
-# ReadMate — CLAUDE.md
+# ReadMate — 공통 AI 지침
+
+이 파일은 모든 AI 도구(Claude, Gemini, Codex 등)가 공통으로 준수해야 할 프로젝트 규칙입니다.
+각 AI별 설정 파일(`.claude/CLAUDE.md`, `.gemini/GEMINI.md`, `.codex/AGENTS.md`)은 이 파일을 기본 규칙으로 참조합니다.
+
+---
 
 ## 프로젝트 개요
 
@@ -48,7 +53,7 @@
 
 - **MeloTTS:** `transformers==4.27.4` 고정으로 `transformers>=5.3.0`과 버전 충돌 → 제외
 - **EasyOCR / PaddleOCR:** Qwen2.5-VL(VLM 기반 OCR)로 교체 — 한국어 인식률 및 복잡한 레이아웃 처리 우위
-- **XTTS v2 (coqui-tts):** 기획에서 TTS 기능 제외
+- **XTTS v2 (coqui-tts):** `coqui-tts` 패키지 버전 충돌로 제외
 
 ---
 
@@ -78,21 +83,49 @@
 
 ## 코드 작성 규칙
 
-- 디바이스 감지는 **직접 작성 금지**, 반드시 `src/lib/utils/device.py`의 `available_device()` 사용
-  ```python
-  from src.lib.utils.device import available_device
-  device = available_device()
-  ```
 - 모델 dtype은 항상 `torch.bfloat16` (CUDA/MPS 공통, CPU는 float32 자동 폴백)
 - LLM 출력은 JSON 포맷으로 강제 (재시도 최대 3회)
 - API 키는 `.env`에서 `python-dotenv`로 관리
 - PDF 분기: 텍스트 추출 가능 → pypdf / 스캔형 → Qwen2.5-VL OCR
 - OCR/LLM 메모리 전략: OCR 완료 후 VL 모델 언로드 → LLM 로드 (`Qwen2VLEngine.unload()`)
 - 린터: `ruff` (설정은 `pyproject.toml` 참고)
-- 함수안에서 import 하지말것
-- 구현부는 별도 파일로 같은 파일에 클래스 한개이상 넣지 말것
-- path는 lib.utils.path안에 함수 사용 및 추가
-- import 시 src. 사용금지
+- 함수 안에서 import 하지 말것
+- 구현부는 별도 파일로, 같은 파일에 클래스 하나 이상 넣지 말것
+- import 시 `src.` 사용 금지
+- 모델 로드는 싱글톤 패턴 (매 호출마다 재로드 금지)
+- 모든 함수에 docstring 작성 (한국어 가능)
+- 타입 힌트 필수
+- 새 파일은 `src/` 하위에 생성
+- 멀티 플랫폼 지원
+
+### 디바이스 감지 — `lib.utils.device`
+
+직접 감지 로직 작성 금지. 반드시 `available_device()`를 사용합니다.
+
+```python
+from lib.utils.device import available_device
+device = available_device()  # 'cuda' | 'mps' | 'cpu'
+```
+
+### 경로 관리 — `lib.utils.path`
+
+하드코딩된 경로 사용 금지. 반드시 아래 함수를 사용하고, 새 경로가 필요하면 이 모듈에 추가합니다.
+
+| 함수 | 반환 경로 | 용도 |
+|------|-----------|------|
+| `model_path(file_name?)` | `data/models/` | 모델 파일 저장/로드 |
+| `data_path()` | `data/` | 데이터 루트 |
+| `tmp_path()` | `data/tmp/` | 임시 파일 (처리 중 중간 결과) |
+| `images_path()` | `data/images/` | 이미지 파일 |
+| `voices_path()` | `data/voices/` | 음성 파일 |
+| `keys_path()` | `keys/` | 암호화 키 파일 |
+
+```python
+from lib.utils.path import model_path, tmp_path, images_path
+
+model = model_path('qwen2vl.bin')   # data/models/qwen2vl.bin
+out   = tmp_path() / 'ocr_out.txt'  # data/tmp/ocr_out.txt
+```
 
 ---
 
@@ -103,12 +136,6 @@
 - 작업 전 관련 파일 먼저 읽고 파악한 뒤 시작
 - 한 번에 하나의 모듈 완성 후 다음으로 이동
 - 완료 후 **간단한 요약 + 다음 단계 제안**으로 마무리
-
-### 코드 작성
-- 새 파일은 `src/` 하위에 생성
-- 모든 함수에 docstring 작성 (한국어 가능)
-- 타입 힌트 필수
-- 모델 로드는 싱글톤 패턴 (매 호출마다 재로드 금지)
 
 ### 디버깅
 - 에러 발생 시 원인 분석 → 수정 → 재확인까지 한 번에 처리
@@ -123,15 +150,4 @@
 ### 질문하는 경우 (예외)
 - 기술 스택 자체를 바꾸는 결정
 - 파이프라인 구조를 크게 변경하는 경우
-
----
-
-## MVP 체크리스트
-
-- [ ] 환경 구축 및 Qwen2.5-7B 실행 확인
-- [ ] Qwen2.5-VL OCR 문서 이미지 인식 테스트
-- [ ] PDF 텍스트 추출 및 요약 (pypdf + OCR 분기)
-- [ ] faster-whisper STT 오디오 변환 테스트
-- [ ] LLM 프롬프트 튜닝 (요약/정리/질의응답 JSON 출력)
-- [ ] Streamlit 전체 파이프라인 연결
-- [ ] 로컬 리소스 최적화 (OCR 후 VL 모델 언로드)
+- `git push` 전 반드시 사용자 승인 후 진행
