@@ -26,6 +26,7 @@ dependencies = [
     "numpy>=2.4.2",
     "pandas<3",
     "python-dotenv>=1.2.1",        # API 키 환경변수 관리
+    "phonemizer>=3.3.0",          # Zonos TTS phoneme 전처리
     "tqdm>=4.67.3",
     "pyprojroot>=0.3.0",           # 프로젝트 루트 경로 관리
     "fastapi>=0.133.0",

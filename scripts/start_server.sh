@@ -25,7 +25,7 @@ cd "$PROJECT_ROOT"
 
 echo "ReadMate LLM 서버 시작"
 echo "  포트    : $PORT"
-echo "  엔진    : ${LLM_ENGINE:-gemma (기본)}"
+echo "  엔진    : ${LLM_ENGINE:-openai (기본)}"
 echo "  주소    : http://localhost:$PORT"
 echo ""
 
