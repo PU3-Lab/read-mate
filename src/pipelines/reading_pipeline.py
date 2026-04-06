@@ -103,13 +103,19 @@ class ReadingPipeline:
         try:
             if on_progress:
                 msg = (
-                    'OCR 처리 중...' if payload.input_type in (InputType.IMAGE, InputType.PDF)
-                    else '음성 인식 중...' if payload.input_type == InputType.AUDIO
+                    'OCR 처리 중...'
+                    if payload.input_type in (InputType.IMAGE, InputType.PDF)
+                    else '음성 인식 중...'
+                    if payload.input_type == InputType.AUDIO
                     else '텍스트 추출 중...'
                 )
                 on_progress(msg)
 
+            if payload.input_type in (InputType.IMAGE, InputType.PDF):
+                logger.info('ocr 추출중')
             extracted_text, ocr_engine, stt_engine = self._extract_text(payload, warnings)
+            if payload.input_type in (InputType.IMAGE, InputType.PDF):
+                logger.info('ocr 추출완료')
             if not extracted_text.strip():
                 return PipelineResult(
                     extracted_text='',

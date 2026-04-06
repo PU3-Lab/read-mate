@@ -89,6 +89,9 @@
 - PDF 분기: 텍스트 추출 가능 → pypdf / 스캔형 → Qwen2.5-VL OCR
 - OCR/LLM 메모리 전략: OCR 완료 후 VL 모델 언로드 → LLM 로드 (`Qwen2VLEngine.unload()`)
 - 린터: `ruff` (설정은 `pyproject.toml` 참고)
+- 코드 수정 후 반드시 `ruff check --fix <대상 경로>` 먼저 실행
+- `ruff check --fix` 후 반드시 `ruff check <대상 경로>`로 최종 확인
+- 기본 범위는 전체 저장소가 아니라 **이번에 수정한 파일 또는 모듈만** 대상으로 실행
 - 함수 안에서 import 하지 말것
 - 구현부는 별도 파일로, 같은 파일에 클래스 하나 이상 넣지 말것
 - import 시 `src.` 사용 금지
