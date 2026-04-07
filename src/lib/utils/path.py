@@ -38,6 +38,12 @@ def voices_path() -> Path:
     return _voices_path
 
 
+def static_tts_path(file_name: str = '') -> Path:
+    _static_tts_path = data_path() / 'static_tts'
+    _static_tts_path.mkdir(parents=True, exist_ok=True)
+    return _static_tts_path / file_name if file_name else _static_tts_path
+
+
 def images_path() -> Path:
     return data_path() / 'images'
 

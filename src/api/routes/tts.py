@@ -18,11 +18,13 @@ from pydantic import BaseModel
 
 from core.config import ELEVENLABS_API_KEY, TMP_DIR
 from core.exceptions import TTSGenerationError
+from services.static_tts_cache import StaticTTSAudioCache
 from services.tts_elevenlabs import ElevenLabsTTS
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix='/api/tts')
+static_tts_cache = StaticTTSAudioCache()
 
 
 class VoiceCloneResponse(BaseModel):
@@ -124,6 +126,20 @@ async def speak_text(req: SpeakRequest) -> StreamingResponse:
         raise HTTPException(status_code=400, detail='ELEVENLABS_API_KEY가 설정되어 있지 않습니다.')
 
     try:
+        cached_audio = static_tts_cache.find_audio(req.text, req.voice_name)
+        if cached_audio is not None:
+            logger.info(
+                '[tts] static_cache_hit voice=%s text_len=%d path=%s',
+                req.voice_name,
+                len(req.text),
+                cached_audio.audio_path,
+            )
+            return StreamingResponse(
+                io.BytesIO(cached_audio.audio_path.read_bytes()),
+                media_type=cached_audio.media_type,
+                headers={'X-ReadMate-TTS-Source': 'static-cache'},
+            )
+
         tts = ElevenLabsTTS(api_key=ELEVENLABS_API_KEY)
         result = tts.synthesize(req.text, req.voice_name)
         audio_path = Path(result.audio_path)
@@ -136,4 +152,8 @@ async def speak_text(req: SpeakRequest) -> StreamingResponse:
         logger.exception('[tts] speak unexpected error')
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
-    return StreamingResponse(io.BytesIO(audio_bytes), media_type='audio/mpeg')
+    return StreamingResponse(
+        io.BytesIO(audio_bytes),
+        media_type='audio/mpeg',
+        headers={'X-ReadMate-TTS-Source': 'elevenlabs'},
+    )

@@ -18,7 +18,14 @@ from pyprojroot import here
 ROOT: Path = here()
 load_dotenv(ROOT / '.env')
 
-from lib.utils.path import data_path, embeddings_path, model_path, tmp_path, voices_path
+from lib.utils.path import (
+    data_path,
+    embeddings_path,
+    model_path,
+    static_tts_path,
+    tmp_path,
+    voices_path,
+)
 
 # ─────────────────────────────────────────
 # 경로
@@ -29,6 +36,8 @@ MODEL_DIR: Path = model_path()
 TMP_DIR: Path = tmp_path()
 VOICES_DIR: Path = voices_path()
 EMBEDDINGS_DIR: Path = embeddings_path()
+STATIC_TTS_DIR: Path = static_tts_path()
+STATIC_TTS_MANIFEST: Path = static_tts_path('manifest.json')
 
 # ─────────────────────────────────────────
 # API 키
