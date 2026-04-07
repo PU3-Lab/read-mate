@@ -2,10 +2,16 @@ import importlib
 import logging
 
 # transformers 5.x 의 image_processing_*_fast 모듈 별칭 경고 억제
-logging.getLogger("transformers").addFilter(
-    type("_SuppressAliasWarning", (logging.Filter,), {
-        "filter": lambda self, r: "alias will be removed in future versions" not in r.getMessage()
-    })()
+logging.getLogger('transformers').addFilter(
+    type(
+        '_SuppressAliasWarning',
+        (logging.Filter,),
+        {
+            'filter': lambda self, r: (
+                'alias will be removed in future versions' not in r.getMessage()
+            )
+        },
+    )()
 )
 
 import streamlit as st
@@ -13,6 +19,8 @@ from speak_js import make_speak_fn
 from styles import inject_styles
 
 from pipelines import get_default_reading_pipeline
+
+logger = logging.getLogger(__name__)
 
 st.set_page_config(
     page_title='Read Mate',
@@ -31,7 +39,11 @@ def init():
             try:
                 get_default_reading_pipeline()
                 st.session_state.models_loaded = True
+                logger.info('=========================================')
+                logger.info(' Streamlit 사전로딩 완료: 시스템 준비됨! ')
+                logger.info('=========================================')
             except Exception as e:
+                logger.error(f'모델 로딩 실패: {e}')
                 st.error(f'모델 로딩 실패: {e}')
 
     defaults = {
@@ -193,9 +205,7 @@ if st.session_state.feature is None:
 """,
             unsafe_allow_html=True,
         )
-        if st.button(
-            '2번 · 자료 분석 시작', key='btn_material', width='stretch'
-        ):
+        if st.button('2번 · 자료 분석 시작', key='btn_material', width='stretch'):
             st.session_state.feature = 'material'
             st.rerun()
 
