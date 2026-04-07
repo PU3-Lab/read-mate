@@ -152,6 +152,8 @@ def _run(file_name: str, audio_bytes: bytes) -> bool:
     st.session_state.pipeline_warnings = result['pipeline_warnings']
     st.session_state.qa_history = []
     st.session_state.active_panel = 'summary'
+    st.session_state.summary_play_key = ''
+    st.session_state.summary_play_token = 0
     st.session_state.qa_new_answer = False
     return True
 
@@ -182,6 +184,8 @@ def _queue_processing(file_name: str, audio_bytes: bytes) -> None:
     st.session_state.pipeline_warnings = []
     st.session_state.qa_history = []
     st.session_state.active_panel = 'summary'
+    st.session_state.summary_play_key = ''
+    st.session_state.summary_play_token = 0
     st.session_state.qa_new_answer = False
 
 
@@ -234,6 +238,8 @@ def _render_processing_status(job_id: str):
         st.session_state.processing_job = None
         st.session_state.processing_step = None
         st.session_state.processing_message = ''
+        st.session_state.summary_play_key = ''
+        st.session_state.summary_play_token = 0
         st.rerun()
 
 
@@ -265,6 +271,8 @@ def _reset():
         'processing_job',
         'processing_step',
         'processing_message',
+        'summary_play_key',
+        'summary_play_token',
     ]:
         st.session_state[k] = (
             None
@@ -287,5 +295,7 @@ def _reset():
             if k == 'processing_error'
             else 'summary'
             if k == 'active_panel'
+            else 0
+            if k == 'summary_play_token'
             else ''
         )

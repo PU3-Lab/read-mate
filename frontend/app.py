@@ -42,6 +42,8 @@ def init():
         'processing_step': None,
         'processing_message': '',
         'active_panel': 'summary',
+        'summary_play_key': '',
+        'summary_play_token': 0,
         'qa_new_answer': False,
         'selected_voice': 'JiYeong Kang',
     }
