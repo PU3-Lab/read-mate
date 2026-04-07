@@ -1,12 +1,29 @@
+import base64
+
 import streamlit as st
 from speak_js import make_speak_fn
+
+
+def _sync_summary_play_state(summary: str, audio_file_name: str, has_cached_audio: bool) -> None:
+    """새 요약이나 새 오디오가 들어오면 자동 재생 토큰을 갱신한다."""
+    current_key = f'{summary}\n{audio_file_name}\n{int(has_cached_audio)}'
+    if st.session_state.get('summary_play_key') == current_key:
+        return
+    st.session_state.summary_play_key = current_key
+    st.session_state.summary_play_token = int(st.session_state.get('summary_play_token', 0)) + 1
 
 def render_summary_panel():
     summary = st.session_state.get('summary', '')
     keywords = st.session_state.get('memo_keywords', [])
+    audio = st.session_state.get('audio_bytes')
+    audio_mime = st.session_state.get('audio_mime') or 'audio/wav'
+    audio_file_name = st.session_state.get('audio_file_name') or 'readmate.wav'
+    has_cached_audio = bool(audio)
     has_quiz = bool(st.session_state.get('quiz', []))
     if not summary:
         return
+
+    _sync_summary_play_state(summary, audio_file_name, has_cached_audio)
 
     # ── 요약 카드 (타이틀 + 본문 묶음) ──────────────
     st.markdown(
@@ -49,9 +66,7 @@ def render_summary_panel():
     c1, c2 = columns[0], columns[1]
     with c1:
         if st.button('다시 듣기', width='stretch', key='sum_r'):
-            st.session_state.audio_bytes = None
-            st.session_state.audio_mime = None
-            st.session_state.audio_file_name = None
+            st.session_state.summary_play_token = int(st.session_state.get('summary_play_token', 0)) + 1
             st.rerun()
     with c2:
         if st.button('질의응답', width='stretch', key='sum_q'):
@@ -77,7 +92,12 @@ def render_summary_panel():
         if has_quiz
         else "speak('현재 퀴즈가 준비되지 않았습니다.');"
     )
-    auto_read_action = 'setTimeout(readSummary, 500);'
+    play_token = int(st.session_state.get('summary_play_token', 0))
+    audio_src = (
+        f'data:{audio_mime};base64,{base64.b64encode(audio).decode()}'
+        if has_cached_audio
+        else ''
+    )
 
     st.iframe(
         f"""
@@ -86,6 +106,43 @@ def render_summary_panel():
   {make_speak_fn()}
 
   window.lastQueueToken = 0;
+  const playToken = {play_token};
+  const hasCachedAudio = {'true' if has_cached_audio else 'false'};
+  const cachedAudioSrc = {repr(audio_src)};
+
+  function claimAudio(audio) {{
+    try {{
+      if (window.parent.speechSynthesis) window.parent.speechSynthesis.cancel();
+    }} catch (err) {{}}
+    try {{
+      const owner = window.parent;
+      const prev = owner.__rmCurrentAudio;
+      if (prev && prev !== audio) {{
+        prev.pause();
+        prev.currentTime = 0;
+      }}
+      owner.__rmCurrentAudio = audio;
+    }} catch (err) {{}}
+  }}
+
+  function playCachedSummary() {{
+    if (!cachedAudioSrc) return;
+    const audio = new Audio(cachedAudioSrc);
+    audio.onended = () => {{
+      try {{
+        if (window.parent.__rmCurrentAudio === audio) window.parent.__rmCurrentAudio = null;
+      }} catch (err) {{}}
+    }};
+    audio.onerror = () => {{
+      try {{
+        if (window.parent.__rmCurrentAudio === audio) window.parent.__rmCurrentAudio = null;
+      }} catch (err) {{}}
+    }};
+    claimAudio(audio);
+    audio.currentTime = 0;
+    audio.play().catch(() => {{}});
+  }}
+
   function speakQueue(arr, i, token, cb) {{
     if (token !== window.lastQueueToken) return; // 큐가 취소됨
     if (i >= arr.length) {{ if (cb) cb(); return; }}
@@ -107,6 +164,14 @@ def render_summary_panel():
     speakQueue(texts, 0, token, null);
   }}
 
+  function syncSummaryPlayback() {{
+    const owner = window.parent;
+    if (owner.__rmSummaryPlayToken === playToken) return;
+    owner.__rmSummaryPlayToken = playToken;
+    if (hasCachedAudio) playCachedSummary();
+    else readSummary();
+  }}
+
   function goTo(panel) {{
     window.lastQueueToken = 0; // 페이지 이동 시 큐 중단
     if (window.currentAudio) {{ window.currentAudio.pause(); window.currentAudio = null; }}
@@ -125,7 +190,7 @@ def render_summary_panel():
     if (tag==='INPUT'||tag==='TEXTAREA') return;
     if (e.key.toLowerCase()==='q') {{ speak('질의응답으로 이동합니다.', ()=>goTo('qa')); }}
     if (e.key.toLowerCase()==='p') {{ {quiz_key_action} }}
-    if (e.key.toLowerCase()==='r') {{ readSummary(); }}
+    if (e.key.toLowerCase()==='r') {{ hasCachedAudio ? playCachedSummary() : readSummary(); }}
     if (e.key==='Backspace') {{ e.preventDefault(); speak('기능 선택으로 돌아갑니다.', ()=>goTo('back')); }}
   }}
 
@@ -133,8 +198,8 @@ def render_summary_panel():
     document.addEventListener('keydown', onKey);
     try {{ window.parent.document.addEventListener('keydown', onKey); }} catch(err) {{}}
     window.summaryInitialized = true;
-    {auto_read_action}
   }}
+  syncSummaryPlayback();
 }})();
 </script>
 """,

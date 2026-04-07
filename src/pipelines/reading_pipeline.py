@@ -387,7 +387,7 @@ def analyze_content(
         content=content,
         voice_preset=voice_preset,
     )
-    result = get_default_reading_pipeline().run_analysis(payload, on_progress=on_progress)
+    result = get_default_reading_pipeline().run(payload, on_progress=on_progress)
     return to_frontend_state(result)
 
 
