@@ -1,6 +1,7 @@
 import importlib
 
 import streamlit as st
+from speak_js import make_speak_fn
 from styles import inject_styles
 
 from pipelines import get_default_reading_pipeline
@@ -33,6 +34,8 @@ def init():
         'memo_keywords': [],
         'qa_history': [],
         'audio_bytes': None,
+        'audio_mime': None,
+        'audio_file_name': None,
         'pipeline_warnings': [],
         'processing_error': '',
         'processing_job': None,
@@ -40,6 +43,7 @@ def init():
         'processing_message': '',
         'active_panel': 'summary',
         'qa_new_answer': False,
+        'selected_voice': 'JiYeong Kang',
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -51,6 +55,78 @@ init()
 
 def load_page(name: str):
     return importlib.import_module(f'pages.{name}')
+
+
+_HOME_A11Y_TEMPLATE = """
+<style>
+#wake{
+  background:#fff8f2;border:2px solid #ff7e5f;border-radius:16px;
+  padding:1rem 1.4rem;text-align:center;
+  font-family:'Gowun Dodum',sans-serif;font-size:.95rem;
+  font-weight:800;color:#ff7e5f;margin-bottom:.5rem;
+}
+#hint{
+  background:#fff8f2;border:1.5px dashed #f0cbb0;border-radius:16px;
+  padding:.9rem 1.2rem;text-align:center;
+  font-family:'Gowun Dodum',sans-serif;font-size:.82rem;
+  font-weight:700;color:#b09a88;line-height:1.8;display:none;
+}
+</style>
+<div id="wake">함께 듣고 싶은 자료가 있다면, 화면을 눌러 알려주세요</div>
+<div id="hint">
+  <strong style="color:#ff7e5f;">Tab</strong> : 버튼 이동 &nbsp;|&nbsp;
+  <strong style="color:#ff7e5f;">Enter</strong> : 선택
+</div>
+<script>
+(function(){
+  let active=false;
+__SPEAK_FN__
+
+  function attachFocus(){
+    window.parent.document.querySelectorAll('button').forEach(b=>{
+      if(b._rmA)return; b._rmA=true;
+      b.addEventListener('focus',()=>{
+        const t=b.innerText.trim();
+        if(t.includes('1번')) speak('첫번째 버튼, 강의 녹음 분석입니다. Enter 를 누르면 시작합니다.');
+        else if(t.includes('2번')) speak('두번째 버튼, 강의 자료 분석입니다. Enter 를 누르면 시작합니다.');
+        else if(t.includes('3번')) speak('세번째 버튼, 내 목소리 설정입니다. Enter 를 누르면 시작합니다.');
+      });
+    });
+  }
+  const obs=new MutationObserver(attachFocus);
+  obs.observe(window.parent.document.body,{childList:true,subtree:true});
+  setTimeout(attachFocus,800);
+
+  function activate(){
+    if(active)return; active=true;
+    document.getElementById('wake').style.display='none';
+    document.getElementById('hint').style.display='block';
+    speak(
+      '리드메이트입니다. 소리로 읽는 강의자료, 배움의 끝이 없도록 우리 함께 공부해요. Tab키를 눌러 버튼으로 이동하세요. 첫번째 버튼은 강의 녹음 분석, 두번째 버튼은 강의 자료 분석, 세번째 버튼은 내 목소리 설정입니다. Enter 를 눌러 선택하세요.',
+      ()=>{
+        const btns=window.parent.document.querySelectorAll('button');
+        for(const b of btns){if(b.innerText.includes('1번')){b.focus();break;}}
+      }
+    );
+  }
+
+  document.addEventListener('keydown', activate, {once:true});
+  document.addEventListener('click',   activate, {once:true});
+  try{
+    window.parent.document.addEventListener('keydown', activate, {once:true});
+    window.parent.document.addEventListener('click',   activate, {once:true});
+  }catch(e){}
+
+  setTimeout(()=>{
+    if(active) speak('리드메이트입니다. Tab 키를 눌러 기능을 선택하세요.');
+  },600);
+})();
+</script>
+"""
+
+
+def _home_a11y_js() -> str:
+    return _HOME_A11Y_TEMPLATE.replace('__SPEAK_FN__', make_speak_fn())
 
 
 # ── 헤더 ─────────────────────────────────────
@@ -80,16 +156,16 @@ if st.session_state.feature is None:
         unsafe_allow_html=True,
     )
 
-    c1, c2 = st.columns(2, gap='large')
+    c1, c2, c3 = st.columns(3, gap='large')
     with c1:
         st.markdown(
             """
-        <div class="feature-card">
-          <div class="feature-icon">🎧</div>
-          <div class="feature-title">강의 녹음 분석</div>
-          <div class="feature-desc">녹음 파일을 올리면<br>요약·퀴즈·질의응답을 제공해요</div>
-        </div>
-        """,
+<div class="feature-card">
+  <div class="feature-icon">🎧</div>
+  <div class="feature-title">강의 녹음 분석</div>
+  <div class="feature-desc">녹음 파일을 올리면<br>요약·퀴즈·질의응답을 제공해요</div>
+</div>
+""",
             unsafe_allow_html=True,
         )
         if st.button('1번 · 녹음 분석 시작', key='btn_audio', width='stretch'):
@@ -99,12 +175,12 @@ if st.session_state.feature is None:
     with c2:
         st.markdown(
             """
-        <div class="feature-card">
-          <div class="feature-icon">📄</div>
-          <div class="feature-title">강의 자료 분석</div>
-          <div class="feature-desc">PDF 또는 이미지를 올리면<br>요약·퀴즈·질의응답을 제공해요</div>
-        </div>
-        """,
+<div class="feature-card">
+  <div class="feature-icon">📄</div>
+  <div class="feature-title">강의 자료 분석</div>
+  <div class="feature-desc">PDF 또는 이미지를 올리면<br>요약·퀴즈·질의응답을 제공해요</div>
+</div>
+""",
             unsafe_allow_html=True,
         )
         if st.button(
@@ -113,83 +189,24 @@ if st.session_state.feature is None:
             st.session_state.feature = 'material'
             st.rerun()
 
+    with c3:
+        st.markdown(
+            """
+<div class="feature-card">
+  <div class="feature-icon">🎙</div>
+  <div class="feature-title">내 목소리 설정</div>
+  <div class="feature-desc">WAV 파일을 올리면<br>내 목소리로 읽어드려요</div>
+</div>
+""",
+            unsafe_allow_html=True,
+        )
+        if st.button('3번 · 목소리 설정', key='btn_voice', width='stretch'):
+            st.session_state.feature = 'voice'
+            st.rerun()
+
     # 음성 안내 + 포커스 + 전역 키
     st.iframe(
-        """
-<style>
-#wake{
-  background:#fff8f2;border:2px solid #ff7e5f;border-radius:16px;
-  padding:1rem 1.4rem;text-align:center;
-  font-family:'Gowun Dodum',sans-serif;font-size:.95rem;
-  font-weight:800;color:#ff7e5f;margin-bottom:.5rem;
-}
-#hint{
-  background:#fff8f2;border:1.5px dashed #f0cbb0;border-radius:16px;
-  padding:.9rem 1.2rem;text-align:center;
-  font-family:'Gowun Dodum',sans-serif;font-size:.82rem;
-  font-weight:700;color:#b09a88;line-height:1.8;display:none;
-}
-</style>
-<div id="wake">함께 듣고 싶은 자료가 있다면, 화면을 눌러 알려주세요</div>
-<div id="hint">
-  <strong style="color:#ff7e5f;">Tab</strong> : 버튼 이동 &nbsp;|&nbsp;
-  <strong style="color:#ff7e5f;">Enter</strong> : 선택
-</div>
-<script>
-(function(){
-  let active=false;
-
-  function speak(t,cb){
-    if(!window.speechSynthesis){if(cb)cb();return;}
-    window.speechSynthesis.cancel();
-    const u=new SpeechSynthesisUtterance(t);
-    u.lang='ko-KR';u.rate=1.0;
-    if(cb)u.onend=cb;
-    window.speechSynthesis.speak(u);
-  }
-
-  // 버튼 포커스 → 즉시 TTS
-  function attachFocus(){
-    window.parent.document.querySelectorAll('button').forEach(b=>{
-      if(b._rmA)return; b._rmA=true;
-      b.addEventListener('focus',()=>{
-        const t=b.innerText.trim();
-        if(t.includes('1번')) speak('첫번째 버튼, 강의 녹음 분석입니다. Enter 를 누르면 시작합니다.');
-        else if(t.includes('2번')) speak('두번째 버튼, 강의 자료 분석입니다. Enter 를 누르면 시작합니다.');
-      });
-    });
-  }
-  const obs=new MutationObserver(attachFocus);
-  obs.observe(window.parent.document.body,{childList:true,subtree:true});
-  setTimeout(attachFocus,800);
-
-  function activate(){
-    if(active)return; active=true;
-    document.getElementById('wake').style.display='none';
-    document.getElementById('hint').style.display='block';
-    speak(
-      '리드메이트입니다. 소리로 읽는 강의자료, 배움의 끝이 없도록 우리 함께 공부해요. Tab키를 눌러 버튼으로 이동하세요. 첫번째 버튼은 강의 녹음 분석, 두번째 버튼은 강의 자료 분석입니다. Enter 를 눌러 선택하세요.',
-      ()=>{
-        const btns=window.parent.document.querySelectorAll('button');
-        for(const b of btns){if(b.innerText.includes('1번')){b.focus();break;}}
-      }
-    );
-  }
-
-  document.addEventListener('keydown', activate, {once:true});
-  document.addEventListener('click',   activate, {once:true});
-  try{
-    window.parent.document.addEventListener('keydown', activate, {once:true});
-    window.parent.document.addEventListener('click',   activate, {once:true});
-  }catch(e){}
-
-  // 돌아왔을 때 (이미 인터랙션 있음)
-  setTimeout(()=>{
-    if(active) speak('리드메이트입니다. Tab 키를 눌러 기능을 선택하세요.');
-  },600);
-})();
-</script>
-""",
+        _home_a11y_js(),
         height=70,
     )
 
@@ -200,6 +217,9 @@ elif st.session_state.feature == 'audio':
 
 elif st.session_state.feature == 'material':
     load_page('lecture_material').render()
+
+elif st.session_state.feature == 'voice':
+    load_page('voice_settings').render()
 
 
 # # ── 푸터 ─────────────────────────────────────

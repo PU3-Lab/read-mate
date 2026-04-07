@@ -1,5 +1,5 @@
 import streamlit as st
-
+from speak_js import make_speak_fn
 
 def render_summary_panel():
     summary = st.session_state.get('summary', '')
@@ -49,6 +49,9 @@ def render_summary_panel():
     c1, c2 = columns[0], columns[1]
     with c1:
         if st.button('다시 듣기', width='stretch', key='sum_r'):
+            st.session_state.audio_bytes = None
+            st.session_state.audio_mime = None
+            st.session_state.audio_file_name = None
             st.rerun()
     with c2:
         if st.button('질의응답', width='stretch', key='sum_q'):
@@ -74,58 +77,64 @@ def render_summary_panel():
         if has_quiz
         else "speak('현재 퀴즈가 준비되지 않았습니다.');"
     )
+    auto_read_action = 'setTimeout(readSummary, 500);'
 
     st.iframe(
         f"""
 <script>
 (function() {{
+  {make_speak_fn()}
 
-  function speak(t, cb) {{
-    if (!window.speechSynthesis) {{ if(cb) cb(); return; }}
-    window.speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(t);
-    u.lang='ko-KR'; u.rate=1.0;
-    if(cb) u.onend=cb;
-    window.speechSynthesis.speak(u);
-  }}
-
-  function speakQueue(arr, i, cb) {{
-    if(i>=arr.length){{ if(cb) cb(); return; }}
-    speak(arr[i], ()=>speakQueue(arr,i+1,cb));
+  window.lastQueueToken = 0;
+  function speakQueue(arr, i, token, cb) {{
+    if (token !== window.lastQueueToken) return; // 큐가 취소됨
+    if (i >= arr.length) {{ if (cb) cb(); return; }}
+    speak(arr[i], () => {{
+      if (token === window.lastQueueToken) speakQueue(arr, i + 1, token, cb);
+    }});
   }}
 
   function readSummary() {{
+    const token = Date.now();
+    window.lastQueueToken = token;
+
     const texts = [
       '{s}',
       {'`핵심 키워드: ' + k + '`' if kw else "''"},
       `{keyboard_help}`
-    ].filter(t=>t.trim());
-    speakQueue(texts, 0, null);
+    ].filter(t => t && t.trim() && t !== "''");
+
+    speakQueue(texts, 0, token, null);
   }}
 
   function goTo(panel) {{
+    window.lastQueueToken = 0; // 페이지 이동 시 큐 중단
+    if (window.currentAudio) {{ window.currentAudio.pause(); window.currentAudio = null; }}
+    if (window.speechSynthesis) window.speechSynthesis.cancel();
+
     const btns = window.parent.document.querySelectorAll('button');
-    for(const b of btns) {{
-      if(panel==='qa'   && b.innerText.includes('질의응답')) {{ b.click(); return; }}
-      if(panel==='quiz' && b.innerText.includes('퀴즈'))    {{ b.click(); return; }}
-      if(panel==='back' && b.innerText.trim()==='ReadMate') {{ b.click(); return; }}
+    for (const b of btns) {{
+      if (panel==='qa'   && b.innerText.includes('질의응답')) {{ b.click(); return; }}
+      if (panel==='quiz' && b.innerText.includes('퀴즈')) {{ b.click(); return; }}
+      if (panel==='back' && b.innerText.trim()==='ReadMate') {{ b.click(); return; }}
     }}
   }}
 
   function onKey(e) {{
     const tag = e.target.tagName;
-    if(tag==='INPUT'||tag==='TEXTAREA') return;
-    if(e.key.toLowerCase()==='q') {{ speak('질의응답으로 이동합니다.', ()=>goTo('qa')); }}
-    if(e.key.toLowerCase()==='p') {{ {quiz_key_action} }}
-    if(e.key.toLowerCase()==='r') {{ readSummary(); }}
-    if(e.key==='Backspace') {{ e.preventDefault(); speak('기능 선택으로 돌아갑니다.', ()=>goTo('back')); }}
+    if (tag==='INPUT'||tag==='TEXTAREA') return;
+    if (e.key.toLowerCase()==='q') {{ speak('질의응답으로 이동합니다.', ()=>goTo('qa')); }}
+    if (e.key.toLowerCase()==='p') {{ {quiz_key_action} }}
+    if (e.key.toLowerCase()==='r') {{ readSummary(); }}
+    if (e.key==='Backspace') {{ e.preventDefault(); speak('기능 선택으로 돌아갑니다.', ()=>goTo('back')); }}
   }}
 
-  document.addEventListener('keydown', onKey);
-  try {{ window.parent.document.addEventListener('keydown', onKey); }} catch(err) {{}}
-
-  // 자동 낭독
-  setTimeout(readSummary, 500);
+  if (!window.summaryInitialized) {{
+    document.addEventListener('keydown', onKey);
+    try {{ window.parent.document.addEventListener('keydown', onKey); }} catch(err) {{}}
+    window.summaryInitialized = true;
+    {auto_read_action}
+  }}
 }})();
 </script>
 """,

@@ -1,6 +1,7 @@
 import json
 
 import streamlit as st
+from speak_js import make_speak_fn
 
 
 def render_quiz_panel():
@@ -112,15 +113,7 @@ body{{background:transparent;font-family:'Gowun Dodum',sans-serif;}}
     return String(n);
   }}
 
-  function speak(t,cb){{
-    window.speechSynthesis&&window.speechSynthesis.cancel();
-    if(!t){{if(cb)cb();return;}}
-    const u=new SpeechSynthesisUtterance(t);
-    u.lang='ko-KR';u.rate=1.0;
-    u.onend=()=>{{if(cb)cb();}};
-    u.onerror=()=>{{if(cb)cb();}};
-    window.speechSynthesis&&window.speechSynthesis.speak(u);
-  }}
+  {make_speak_fn()}
 
   function speakQ(arr,i,cb){{
     if(i>=arr.length){{if(cb)cb();return;}}
