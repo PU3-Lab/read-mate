@@ -1,4 +1,5 @@
 import streamlit as st
+from speak_js import make_speak_fn
 
 from pipelines import answer_question
 
@@ -48,13 +49,7 @@ body{background:transparent;font-family:'Gowun Dodum',sans-serif;}
   const qbox   = document.getElementById('qbox');
   const btn    = document.getElementById('send-btn');
 
-  function speak(t,cb){
-    window.speechSynthesis&&window.speechSynthesis.cancel();
-    const u=new SpeechSynthesisUtterance(t);
-    u.lang='ko-KR';u.rate=1.0;
-    if(cb)u.onend=cb;
-    window.speechSynthesis&&window.speechSynthesis.speak(u);
-  }
+  __SPEAK_FN__
 
   function initRec(){
     if(!SR)return;
@@ -175,11 +170,7 @@ def render_qa_panel():
             f"""
 <script>
 (function(){{
-  function speak(t,cb){{
-    window.speechSynthesis&&window.speechSynthesis.cancel();
-    const u=new SpeechSynthesisUtterance(t);u.lang='ko-KR';u.rate=1.0;
-    if(cb)u.onend=cb;window.speechSynthesis&&window.speechSynthesis.speak(u);
-  }}
+  {make_speak_fn()}
   setTimeout(()=>speak('{ans}',()=>{{
     setTimeout(()=>speak('다시 질문하려면 Space, 요약으로 돌아가려면 Backspace 를 눌러주세요.'),300);
   }}),300);
@@ -190,7 +181,7 @@ def render_qa_panel():
         )
         st.session_state.qa_new_answer = False
 
-    st.iframe(_QA_HTML, height=270)
+    st.iframe(_QA_HTML.replace('__SPEAK_FN__', make_speak_fn()), height=270)
     st.iframe(_QA_BRIDGE_HTML, height=1)
 
     # 보조 텍스트 입력

@@ -5,20 +5,14 @@ from job_runner import (
     get_analysis_job_result,
     submit_analysis_job,
 )
+from speak_js import make_speak_fn
 
 from pipelines import analyze_content
 
-_A11Y_JS = """
+_A11Y_TEMPLATE = """
 <script>
 (function(){
-  function speak(t,cb){
-    if(!window.speechSynthesis){if(cb)cb();return;}
-    window.speechSynthesis.cancel();
-    const u=new SpeechSynthesisUtterance(t);
-    u.lang='ko-KR';u.rate=1.0;
-    if(cb)u.onend=cb;
-    window.speechSynthesis.speak(u);
-  }
+__SPEAK_FN__
 
   // 진입 안내 → 업로드 버튼 포커스
   function init(){
@@ -85,6 +79,10 @@ _A11Y_JS = """
 """
 
 
+def _a11y_js() -> str:
+    return _A11Y_TEMPLATE.replace('__SPEAK_FN__', make_speak_fn())
+
+
 def render() -> None:
     if st.session_state.get('processing_error'):
         st.error(st.session_state.processing_error)
@@ -129,7 +127,7 @@ def render() -> None:
                 _queue_processing(uploaded.name, uploaded.getvalue())
                 st.rerun()
 
-        st.iframe(_A11Y_JS, height=1)
+        st.iframe(_a11y_js(), height=1)
 
     else:
         render_result_panel()
@@ -149,6 +147,8 @@ def _run(file_name: str, audio_bytes: bytes) -> bool:
     st.session_state.quiz = result['quiz']
     st.session_state.memo_keywords = result['memo_keywords']
     st.session_state.audio_bytes = result['audio_bytes']
+    st.session_state.audio_mime = result.get('audio_mime')
+    st.session_state.audio_file_name = result.get('audio_file_name')
     st.session_state.pipeline_warnings = result['pipeline_warnings']
     st.session_state.qa_history = []
     st.session_state.active_panel = 'summary'
@@ -161,7 +161,7 @@ def _queue_processing(file_name: str, audio_bytes: bytes) -> None:
     job_id = submit_analysis_job(
         file_name=file_name,
         content=audio_bytes,
-        voice_preset='default',
+        voice_preset=st.session_state.get('selected_voice', 'JiYeong Kang'),
     )
     st.session_state.processing_job = {
         'job_id': job_id,
@@ -177,6 +177,8 @@ def _queue_processing(file_name: str, audio_bytes: bytes) -> None:
     st.session_state.quiz = []
     st.session_state.memo_keywords = []
     st.session_state.audio_bytes = None
+    st.session_state.audio_mime = None
+    st.session_state.audio_file_name = None
     st.session_state.pipeline_warnings = []
     st.session_state.qa_history = []
     st.session_state.active_panel = 'summary'
@@ -226,6 +228,8 @@ def _render_processing_status(job_id: str):
         st.session_state.quiz = result['quiz']
         st.session_state.memo_keywords = result['memo_keywords']
         st.session_state.audio_bytes = result['audio_bytes']
+        st.session_state.audio_mime = result.get('audio_mime')
+        st.session_state.audio_file_name = result.get('audio_file_name')
         st.session_state.pipeline_warnings = result['pipeline_warnings']
         st.session_state.processing_job = None
         st.session_state.processing_step = None
@@ -251,6 +255,8 @@ def _reset():
         'memo_keywords',
         'qa_history',
         'audio_bytes',
+        'audio_mime',
+        'audio_file_name',
         'active_panel',
         'qa_new_answer',
         'feature',
@@ -262,7 +268,15 @@ def _reset():
     ]:
         st.session_state[k] = (
             None
-            if k in ('audio_bytes', 'feature', 'processing_job', 'processing_step')
+            if k
+            in (
+                'audio_bytes',
+                'audio_mime',
+                'audio_file_name',
+                'feature',
+                'processing_job',
+                'processing_step',
+            )
             else []
             if k in ('quiz', 'memo_keywords', 'qa_history')
             else False

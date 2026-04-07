@@ -7,6 +7,7 @@ from __future__ import annotations
 import logging
 import time
 import uuid
+from pathlib import Path
 
 import requests
 
@@ -17,7 +18,7 @@ from services.base import BaseTTS
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_VOICE = 'Rachel'
+DEFAULT_VOICE = 'JiYeong Kang'
 ELEVENLABS_MODEL = 'eleven_multilingual_v2'
 
 
@@ -95,6 +96,47 @@ class ElevenLabsTTS(BaseTTS):
             engine='elevenlabs/eleven_multilingual_v2',
             duration_sec=round(duration, 2),
         )
+
+    def clone_voice(self, name: str, wav_paths: list[Path]) -> str:
+        """
+        WAV 파일을 ElevenLabs에 업로드해 인스턴트 보이스 클론을 생성한다.
+
+        Args:
+            name: 생성할 클론 화자의 이름
+            wav_paths: 업로드할 WAV 파일 경로 리스트 (최소 1개)
+
+        Returns:
+            str: 생성된 클론 화자의 voice_id
+
+        Raises:
+            ValueError: wav_paths가 비어 있을 때
+            TTSGenerationError: API 호출 실패 시
+        """
+        if not wav_paths:
+            raise ValueError('업로드할 WAV 파일을 1개 이상 지정해야 합니다.')
+
+        files = [
+            ('files', (p.name, p.read_bytes(), 'audio/wav'))
+            for p in wav_paths
+        ]
+        try:
+            response = requests.post(
+                'https://api.elevenlabs.io/v1/voices/add',
+                headers={'xi-api-key': self.api_key},
+                data={'name': name},
+                files=files,
+                timeout=120,
+            )
+            response.raise_for_status()
+            voice_id: str = response.json()['voice_id']
+        except Exception as exc:
+            raise TTSGenerationError(f'ElevenLabs 보이스 클론 생성 실패: {exc}') from exc
+
+        # 화자 목록 캐시 무효화
+        self._voices_cache = None
+
+        logger.info('[tts:elevenlabs] voice_clone name=%s voice_id=%s files=%d', name, voice_id, len(wav_paths))
+        return voice_id
 
     def list_presets(self) -> list[str]:
         """사용 가능한 ElevenLabs 계정 화자 목록 반환."""

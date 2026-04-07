@@ -134,6 +134,9 @@ html, body, [data-testid="stAppViewContainer"] {
   box-shadow: var(--shadow);
   transition: border-color .2s, transform .15s;
   position: relative; z-index: 1;
+  height: 300px;
+  margin-bottom: 1rem;
+  box-sizing: border-box;
 }
 .feature-card:hover {
   border-color: var(--accent);
