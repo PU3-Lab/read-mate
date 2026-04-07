@@ -124,6 +124,7 @@ def render() -> None:
             ext = uploaded.name.split('.')[-1].lower()
             st.audio(uploaded, format=f'audio/{ext}')
             if st.button('분석 시작', width='stretch', key='run_audio'):
+                _tts_notify('분석을 시작합니다. 잠시만 기다려 주세요')
                 _queue_processing(uploaded.name, uploaded.getvalue())
                 st.rerun()
 
@@ -131,6 +132,23 @@ def render() -> None:
 
     else:
         render_result_panel()
+
+
+def _tts_notify(msg: str) -> None:
+    """Python 단계 전환 시 백엔드 TTS로 안내 메시지를 재생한다."""
+    speak_js_code = make_speak_fn()
+    safe = msg.replace("'", "\\'")
+    st.iframe(
+        f"""
+<script>
+(function(){{
+{speak_js_code}
+  speak('{safe}');
+}})();
+</script>
+""",
+        height=1,
+    )
 
 
 def _run(file_name: str, audio_bytes: bytes) -> bool:
@@ -189,6 +207,13 @@ def _queue_processing(file_name: str, audio_bytes: bytes) -> None:
     st.session_state.qa_new_answer = False
 
 
+_PROGRESS_TTS: dict[str, str] = {
+    '음성': '잠시만 기다려 주세요',
+    'LLM': '잠시만 기다려 주세요',
+    'TTS': '잠시만 기다려 주세요',
+}
+_last_tts_msg: dict = {}
+
 @st.fragment(run_every='1.0s')
 def _render_processing_status(job_id: str):
     """진행 상황을 껌벅임 없이 업데이트하기 위한 프래그먼트."""
@@ -205,6 +230,36 @@ def _render_processing_status(job_id: str):
     if result is None:
         # 아직 진행 중: CSS 스피너와 함께 진행 메시지 표시
         current_msg = get_analysis_job_progress(job_id)
+
+        tts_msg = next(
+            (v for k, v in _PROGRESS_TTS.items() if k in current_msg),
+            '잠시만 기다려 주세요',
+        )
+        step_changed = _last_tts_msg.get(job_id) != tts_msg
+        if step_changed:
+            _last_tts_msg[job_id] = tts_msg
+
+        safe_msg = tts_msg.replace("'", "\\'")
+        st.iframe(
+            f"""
+<script>
+(function() {{
+  {make_speak_fn()}
+
+  if (window._rmTtsInterval) {{
+    clearInterval(window._rmTtsInterval);
+    window._rmTtsInterval = null;
+  }}
+
+  {'speak("' + safe_msg + '");' if step_changed else ''}
+
+  window._rmTtsInterval = setInterval(() => speak('{safe_msg}'), 8000);
+}})();
+</script>
+""",
+            height=1,
+        )
+
         st.markdown(
             f"""
             <div style="display: flex; align-items: center; gap: 12px; padding: 1rem; background: #f8f9fa; border-radius: 10px; border: 1px solid #e9ecef;">
@@ -229,6 +284,20 @@ def _render_processing_status(job_id: str):
             unsafe_allow_html=True,
         )
     else:
+        st.iframe(
+            """
+<script>
+(function() {
+  if (window._rmTtsInterval) {
+    clearInterval(window._rmTtsInterval);
+    window._rmTtsInterval = null;
+  }
+  if (window.speechSynthesis) window.speechSynthesis.cancel();
+})();
+</script>
+""",
+            height=1,
+        )
         # 작업 완료: 결과를 세션 상태에 저장하고 전체 페이지 리런
         st.session_state.raw_text = result['raw_text']
         st.session_state.summary = result['summary']

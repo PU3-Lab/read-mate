@@ -671,12 +671,11 @@ def _render_processing_status(job_id: str):
 
         safe_msg = tts_msg.replace("'", "\\'")
         # step_changed 이면 즉시 1회 재생 후 interval 시작
-        # 아니면 interval만 유지 (페이지 재진입 시 interval이 끊기므로 항상 재등록)
         st.iframe(
             f"""
 <script>
 (function() {{
-  if (!window.speechSynthesis) return;
+  {make_speak_fn()}
 
   // 이전 interval 제거 (fragment 재진입마다 새로 등록)
   if (window._rmTtsInterval) {{
@@ -684,20 +683,11 @@ def _render_processing_status(job_id: str):
     window._rmTtsInterval = null;
   }}
 
-  function speak() {{
-    if (!window.speechSynthesis) return;
-    window.speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance('{safe_msg}');
-    u.lang = 'ko-KR';
-    u.rate = 1.0;
-    window.speechSynthesis.speak(u);
-  }}
-
   // 단계 변경 시 즉시 1회 재생
-  {'speak();' if step_changed else ''}
+  {'speak("' + safe_msg + '");' if step_changed else ''}
 
   // 8초마다 반복 재생
-  window._rmTtsInterval = setInterval(speak, 8000);
+  window._rmTtsInterval = setInterval(() => speak('{safe_msg}'), 8000);
 }})();
 </script>
 """,

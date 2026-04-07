@@ -11,17 +11,17 @@
       "voice_name": "*"
     },
     {
-      "text": "첫번째 버튼, 강의 녹음 분석입니다. 엔터 를 누르면 시작합니다.",
+      "text": "첫번째 버튼, 강의 녹음 분석입니다. 엔터를 누르면 시작합니다.",
       "audio_file": "app/focus_audio_analysis.mp3",
       "voice_name": "*"
     },
     {
-      "text": "두번째 버튼, 강의 자료 분석입니다. 엔터 를 누르면 시작합니다.",
+      "text": "두번째 버튼, 강의 자료 분석입니다. 엔터를 누르면 시작합니다.",
       "audio_file": "app/focus_material_analysis.mp3",
       "voice_name": "*"
     },
     {
-      "text": "세번째 버튼, 내 목소리 설정입니다. 엔터 를 누르면 시작합니다.",
+      "text": "세번째 버튼, 내 목소리 설정입니다. 엔터를 누르면 시작합니다.",
       "audio_file": "app/focus_voice_settings.mp3",
       "voice_name": "*"
     },
@@ -31,7 +31,7 @@
       "voice_name": "*"
     },
     {
-      "text": "강의 자료 분석입니다. 1번, 파일 업로드. 2번, 카메라 촬영. 숫자키 1 또는 2를 눌러 선택하세요. Backspace 를 누르면 홈으로 돌아갑니다.",
+      "text": "강의 자료 분석입니다. 1번, 파일 업로드. 2번, 카메라 촬영. 숫자키 1 또는 2를 눌러 선택하세요. 백스페이스 를 누르면 홈으로 돌아갑니다.",
       "audio_file": "material/page_intro.mp3",
       "voice_name": "*"
     },
@@ -41,7 +41,7 @@
       "voice_name": "*"
     },
     {
-      "text": "분석 시작 버튼입니다. 엔터 를 눌러주세요.",
+      "text": "분석 시작 버튼입니다. 엔터를 눌러주세요.",
       "audio_file": "common/focus_run_analysis.mp3",
       "voice_name": "*"
     },
@@ -61,7 +61,7 @@
       "voice_name": "*"
     },
     {
-      "text": "탭 키를 눌러 분석 시작 버튼으로 이동한 뒤 엔터 를 눌러주세요.",
+      "text": "탭 키를 눌러 분석 시작 버튼으로 이동한 뒤 엔터를 눌러주세요.",
       "audio_file": "common/move_to_run_analysis.mp3",
       "voice_name": "*"
     },
@@ -76,17 +76,17 @@
       "voice_name": "*"
     },
     {
-      "text": "파일 업로드 모드입니다. 탭 키를 눌러 파일 선택 버튼으로 이동하세요. Backspace 를 누르면 모드 선택으로 돌아갑니다.",
+      "text": "파일 업로드 모드입니다. 탭 키를 눌러 파일 선택 버튼으로 이동하세요. 백스페이스 를 누르면 모드 선택으로 돌아갑니다.",
       "audio_file": "material/upload_mode_intro.mp3",
       "voice_name": "*"
     },
     {
-      "text": "1번, 파일 업로드 버튼입니다. 엔터 를 눌러주세요.",
+      "text": "일번, 파일 업로드 버튼입니다. 엔터를 눌러주세요.",
       "audio_file": "material/focus_upload_mode.mp3",
       "voice_name": "*"
     },
     {
-      "text": "2번, 카메라 촬영 버튼입니다. 엔터 를 눌러주세요.",
+      "text": "이번, 카메라 촬영 버튼입니다. 엔터를 눌러주세요.",
       "audio_file": "material/focus_camera_mode.mp3",
       "voice_name": "*"
     },
@@ -106,7 +106,7 @@
       "voice_name": "*"
     },
     {
-      "text": "카메라가 준비되었습니다. 문서를 화면 가득 채운 뒤 스페이스 를 눌러 촬영하세요.",
+      "text": "카메라가 준비되었습니다. 문서를 화면 가득 채운 뒤 스페이스를 눌러 촬영하세요.",
       "audio_file": "material/camera_ready.mp3",
       "voice_name": "*"
     },
@@ -116,12 +116,12 @@
       "voice_name": "*"
     },
     {
-      "text": "촬영되었습니다. Enter 를 누르면 분석을 시작합니다. R 을 누르면 다시 촬영합니다.",
+      "text": "촬영되었습니다. 엔터를 누르면 분석을 시작합니다. 알을 누르면 다시 촬영합니다.",
       "audio_file": "material/camera_capture_done.mp3",
       "voice_name": "*"
     },
     {
-      "text": "다시 촬영합니다. 문서를 화면에 맞추고 스페이스 를 눌러 촬영하세요.",
+      "text": "다시 촬영합니다. 문서를 화면에 맞추고 스페이스를 눌러 촬영하세요.",
       "audio_file": "material/camera_retry_full.mp3",
       "voice_name": "*"
     },
@@ -141,12 +141,12 @@
       "voice_name": "*"
     },
     {
-      "text": "촬영된 이미지입니다. 엔터 로 분석을 시작하거나 R키 로 다시 촬영하세요.",
+      "text": "촬영된 이미지입니다. 엔터로 분석을 시작하거나 R키 로 다시 촬영하세요.",
       "audio_file": "material/camera_preview_intro.mp3",
       "voice_name": "*"
     },
     {
-      "text": "목소리 등록 버튼입니다. 엔터 를 눌러주세요.",
+      "text": "목소리 등록 버튼입니다. 엔터를 눌러주세요.",
       "audio_file": "voice/focus_register_voice.mp3",
       "voice_name": "*"
     },
@@ -196,7 +196,7 @@
       "voice_name": "*"
     },
     {
-      "text": "녹음이 중지되었습니다. 엔터 를 눌러 전송하세요.",
+      "text": "녹음이 중지되었습니다. 엔터를 눌러 전송하세요.",
       "audio_file": "qa/stop_recording.mp3",
       "voice_name": "*"
     },
@@ -216,12 +216,12 @@
       "voice_name": "*"
     },
     {
-      "text": "질의응답 화면입니다. 스페이스키 를 눌러 질문을 하고, 다시 스페이크키 로 중지한 뒤 엔터키 로 전송하세요. Backspace 를 누르면 요약화면 으로 돌아갑니다.",
+      "text": "질의응답 화면입니다. 스페이스키 를 눌러 질문을 하고, 다시 스페이크키 로 중지한 뒤 엔터키 로 전송하세요. 백스페이스 를 누르면 요약화면 으로 돌아갑니다.",
       "audio_file": "qa/page_intro.mp3",
       "voice_name": "*"
     },
     {
-      "text": "다시 질문하려면 Space, 요약으로 돌아가려면 Backspace 를 눌러주세요.",
+      "text": "다시 질문하려면 스페이스, 요약으로 돌아가려면 백스페이스 를 눌러주세요.",
       "audio_file": "qa/retry_or_back.mp3",
       "voice_name": "*"
     },
@@ -236,7 +236,7 @@
       "voice_name": "*"
     },
     {
-      "text": "숫자키 1부터 4로 보기를 선택하고 Enter 로 제출하세요.",
+      "text": "숫자키 1부터 4로 보기를 선택하고 엔터로 제출하세요.",
       "audio_file": "quiz/how_to_answer.mp3",
       "voice_name": "*"
     },
@@ -246,7 +246,7 @@
       "voice_name": "*"
     },
     {
-      "text": "L키 로 문제 다시 듣기, C키 로 선택 확인, Backspace 로 요약으로 돌아갑니다.",
+      "text": "엘키 로 문제 다시 듣기, 씨키 로 선택 확인, 백스페이스 로 요약으로 돌아갑니다.",
       "audio_file": "quiz/keyboard_help.mp3",
       "voice_name": "*"
     },

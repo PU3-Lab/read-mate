@@ -21,7 +21,12 @@ class StaticTTSAudio:
 
 def normalize_tts_text(text: str) -> str:
     """Collapse whitespace so minor formatting differences still match."""
-    return ' '.join(text.split())
+    t = text.lower()
+    t = t.replace('backspace', '백스페이스')
+    t = t.replace('space', '스페이스')
+    t = t.replace('enter', '엔터')
+    t = t.replace('tab', '탭')
+    return ' '.join(t.split())
 
 
 class StaticTTSAudioCache:
