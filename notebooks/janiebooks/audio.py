@@ -163,17 +163,19 @@
 # # ======================================================================================================
 # ## 영상 추출 원하는 지점 원할 시 
 
-import sys
 import os
+import sys
 
 from lib.utils.path import data_path
+
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-import whisper
-import yt_dlp
 import re
 import subprocess
 import tempfile
+
+import whisper
+import yt_dlp
 
 from models.schemas import STTResult
 from services.base import BaseSTT

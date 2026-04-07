@@ -1,5 +1,6 @@
 import streamlit as st
 
+
 def inject_styles():
     st.markdown("""
 <style>

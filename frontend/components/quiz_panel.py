@@ -1,23 +1,24 @@
-import sys, os
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+import json
 
 import streamlit as st
-import streamlit.components.v1 as components
-import json
 
 
 def render_quiz_panel():
-    quiz_list = st.session_state.get("quiz", [])
+    quiz_list = st.session_state.get('quiz', [])
     if not quiz_list:
         return
 
-    st.markdown("""
+    st.markdown(
+        """
     <div class="rm-card">
       <div class="rm-card-title">🧩 퀴즈</div>
     </div>
-    """, unsafe_allow_html=True)
+    """,
+        unsafe_allow_html=True,
+    )
 
-    st.markdown("""
+    st.markdown(
+        """
     <div class="kb-hint">
       <strong>1~4</strong> : 보기 선택 &nbsp;|&nbsp;
       <strong>Enter</strong> : 제출 &nbsp;|&nbsp;
@@ -27,12 +28,15 @@ def render_quiz_panel():
       <strong>R</strong> : 처음부터 &nbsp;|&nbsp;
       <strong>Backspace</strong> : 요약으로
     </div>
-    """, unsafe_allow_html=True)
+    """,
+        unsafe_allow_html=True,
+    )
 
     qj = json.dumps(quiz_list, ensure_ascii=False)
-    h  = 280 + len(quiz_list[0]["options"]) * 64 + 100
+    h = 280 + len(quiz_list[0]['options']) * 64 + 100
 
-    components.html(f"""
+    st.iframe(
+        f"""
 <style>
 *{{box-sizing:border-box;margin:0;padding:0;}}
 body{{background:transparent;font-family:'Gowun Dodum',sans-serif;}}
@@ -246,10 +250,12 @@ body{{background:transparent;font-family:'Gowun Dodum',sans-serif;}}
   }},400);
 }})();
 </script>
-""", height=h, scrolling=False)
+""",
+        height=h,
+    )
 
     st.markdown('<div class="btn-sec">', unsafe_allow_html=True)
-    if st.button("← 요약으로 돌아가기", use_container_width=True, key="quiz_back"):
-        st.session_state.active_panel = "summary"
+    if st.button('← 요약으로 돌아가기', width='stretch', key='quiz_back'):
+        st.session_state.active_panel = 'summary'
         st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)

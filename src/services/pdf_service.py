@@ -6,6 +6,7 @@ PDF 텍스트 추출 엔진 구현.
 import io
 import logging
 
+import fitz
 import pypdf
 
 from models.schemas import PDFResult
@@ -96,32 +97,27 @@ class PyPDFEngine(BasePDF):
     def _ocr_pdf(self, pdf_bytes: bytes) -> str:
         """
         스캔형 PDF 각 페이지를 이미지로 변환 후 OCR 수행.
-        pdf2image로 페이지를 렌더링, PIL 이미지 → bytes → OCR 처리.
+        PyMuPDF로 페이지를 직접 렌더링해 Poppler 의존성을 제거한다.
         """
         try:
-            from pdf2image import convert_from_bytes
-        except ImportError as e:
-            raise RuntimeError(
-                'pdf2image 라이브러리 미설치. '
-                'uv add pdf2image 및 Poppler 바이너리 설치 필요'
-            ) from e
-
-        try:
-            images = convert_from_bytes(pdf_bytes, dpi=200)
+            doc = fitz.open(stream=pdf_bytes, filetype='pdf')
         except Exception as e:
-            logger.warning('pdf2image 변환 실패: %s, 직접 OCR 불가', e)
-            raise RuntimeError(f'PDF 페이지 렌더링 실패: {e}') from e
+            raise RuntimeError(f'PDF 렌더링 실패: {e}') from e
 
         texts = []
-        for i, pil_img in enumerate(images):
-            # PIL 이미지 → PNG bytes
-            buf = io.BytesIO()
-            pil_img.save(buf, format='PNG')
-            buf.seek(0)
+        for i, page in enumerate(doc):
+            try:
+                pix = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
+            except Exception as e:
+                logger.warning('페이지 %d 렌더링 실패: %s, 빈 문자열로 대체', i, e)
+                texts.append('')
+                continue
+
+            image_bytes = pix.tobytes('png')
 
             # OCR 처리
             try:
-                ocr_result = self._ocr.recognize(buf.getvalue())
+                ocr_result = self._ocr.recognize(image_bytes)
                 texts.append(ocr_result.raw_text)
                 logger.debug(
                     'OCR 페이지 %d: confidence=%.3f, text_len=%d',
@@ -134,5 +130,5 @@ class PyPDFEngine(BasePDF):
                 texts.append('')
 
         result = '\n\n'.join(texts)
-        logger.info('OCR PDF 완료: pages=%d, total_length=%d', len(images), len(result))
+        logger.info('OCR PDF 완료: pages=%d, total_length=%d', len(doc), len(result))
         return result
