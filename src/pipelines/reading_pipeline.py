@@ -125,7 +125,7 @@ class ReadingPipeline:
                 )
 
             if on_progress:
-                on_progress('LLM 분석 및 요약 중...')
+                on_progress('잠시만 기다려주세요...')
 
             task = TaskType.QA if payload.question else TaskType.SUMMARIZE
             llm_result = self._run_llm(extracted_text, task, payload.question)

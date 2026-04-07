@@ -4,13 +4,18 @@ import streamlit as st
 from speak_js import make_speak_fn
 
 
-def _sync_summary_play_state(summary: str, audio_file_name: str, has_cached_audio: bool) -> None:
+def _sync_summary_play_state(
+    summary: str, audio_file_name: str, has_cached_audio: bool
+) -> None:
     """새 요약이나 새 오디오가 들어오면 자동 재생 토큰을 갱신한다."""
     current_key = f'{summary}\n{audio_file_name}\n{int(has_cached_audio)}'
     if st.session_state.get('summary_play_key') == current_key:
         return
     st.session_state.summary_play_key = current_key
-    st.session_state.summary_play_token = int(st.session_state.get('summary_play_token', 0)) + 1
+    st.session_state.summary_play_token = (
+        int(st.session_state.get('summary_play_token', 0)) + 1
+    )
+
 
 def render_summary_panel():
     summary = st.session_state.get('summary', '')
@@ -37,8 +42,54 @@ def render_summary_panel():
     )
 
     if keywords:
-        chips = ''.join(f'<span class="kw-chip">{k}</span>' for k in keywords)
-        st.markdown(f'<br><div class="kw-chips">{chips}</div>', unsafe_allow_html=True)
+        # ── 방어 처리: 문자열이면 콤마/개행 분리 ──────────
+        if isinstance(keywords, str):
+            keywords = [
+                k.strip() for k in keywords.replace('\n', ',').split(',') if k.strip()
+            ]
+
+        if keywords:
+            items_html = ''.join(f'<li class="kp-item">{k}</li>' for k in keywords)
+            st.markdown(
+                f"""
+<br>
+<div class="kp-box">
+  <div class="kp-title">Key Points</div>
+  <ul class="kp-list">{items_html}</ul>
+</div>
+<style>
+.kp-box {{
+  background: #faf4ef;
+  border: 1.5px solid #c4a898;
+  border-left: 4px solid #b07060;
+  border-radius: 14px;
+  padding: 1rem 1.2rem 1rem 1.4rem;
+  margin-top: .4rem;
+  margin-bottom: 1.2rem;
+}}
+.kp-title {{
+  font-size: 1rem;
+  font-weight: 900;
+  color: #b07060;
+  margin-bottom: .55rem;
+  letter-spacing: .03em;
+}}
+.kp-list {{
+  margin: 0;
+  padding-left: 1.3rem;
+  list-style: disc;
+}}
+.kp-item {{
+  font-size: .97rem;
+  font-weight: 600;
+  color: #1a0f0a;
+  line-height: 1.85;
+  word-break: keep-all;
+}}
+</style>
+""",
+                unsafe_allow_html=True,
+            )
 
     with st.expander('📄 원문 보기', expanded=False):
         st.markdown(
@@ -48,35 +99,34 @@ def render_summary_panel():
         )
 
     # ── 키보드 힌트 ───────────────────────────────
-    hint_html = """
+    st.markdown(
+        """
     <div class="kb-hint">
       <strong>Q</strong> : 질의응답 &nbsp;|&nbsp;
-    """
-    if has_quiz:
-        hint_html += '<strong>P</strong> : 퀴즈 &nbsp;|&nbsp;'
-    hint_html += """
+      <strong>P</strong> : 퀴즈 &nbsp;|&nbsp;
       <strong>R</strong> : 다시 듣기 &nbsp;|&nbsp;
       <strong>Backspace</strong> : 기능 선택으로
     </div>
-    """
-    st.markdown(hint_html, unsafe_allow_html=True)
+    """,
+        unsafe_allow_html=True,
+    )
 
     # ── 버튼 ─────────────────────────────────────
-    columns = st.columns(3 if has_quiz else 2)
-    c1, c2 = columns[0], columns[1]
+    c1, c2, c3 = st.columns(3)
     with c1:
-        if st.button('다시 듣기', width='stretch', key='sum_r'):
-            st.session_state.summary_play_token = int(st.session_state.get('summary_play_token', 0)) + 1
+        if st.button('다시 듣기', use_container_width=True, key='sum_r'):
+            st.session_state.summary_play_token = (
+                int(st.session_state.get('summary_play_token', 0)) + 1
+            )
             st.rerun()
     with c2:
-        if st.button('질의응답', width='stretch', key='sum_q'):
+        if st.button('질의응답', use_container_width=True, key='sum_q'):
             st.session_state.active_panel = 'qa'
             st.rerun()
-    if has_quiz:
-        with columns[2]:
-            if st.button('퀴즈', width='stretch', key='sum_p'):
-                st.session_state.active_panel = 'quiz'
-                st.rerun()
+    with c3:
+        if st.button('퀴즈', use_container_width=True, key='sum_p'):
+            st.session_state.active_panel = 'quiz'
+            st.rerun()
 
     # ── 자동 낭독 + 전역 키 ───────────────────────
     kw = ', '.join(keywords) if keywords else ''
@@ -157,7 +207,7 @@ def render_summary_panel():
 
     const texts = [
       '{s}',
-      {'`핵심 키워드: ' + k + '`' if kw else "''"},
+      {'`핵심 문장: ' + k + '`' if kw else "''"},
       `{keyboard_help}`
     ].filter(t => t && t.trim() && t !== "''");
 
