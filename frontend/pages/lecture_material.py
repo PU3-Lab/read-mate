@@ -324,6 +324,9 @@ window.addEventListener('message', function(e){
 
 
 def render() -> None:
+    if st.session_state.get('processing_error'):
+        st.error(st.session_state.processing_error)
+
     for k, v in [("input_mode", None), ("camera_image", None)]:
         if k not in st.session_state:
             st.session_state[k] = v
@@ -368,7 +371,7 @@ def render() -> None:
                   <div class="feature-desc">PDF 또는 이미지 파일을<br>직접 올려 분석해요</div>
                 </div>
                 """, unsafe_allow_html=True)
-                if st.button("1번 · 파일 업로드", key="mode_upload", use_container_width=True):
+                if st.button("1번 · 파일 업로드", key="mode_upload", width='stretch'):
                     st.session_state.input_mode = "upload"
                     st.rerun()
 
@@ -380,7 +383,7 @@ def render() -> None:
                   <div class="feature-desc">카메라로 문서를 촬영하면<br>바로 분석해드려요</div>
                 </div>
                 """, unsafe_allow_html=True)
-                if st.button("2번 · 카메라 촬영", key="mode_camera", use_container_width=True):
+                if st.button("2번 · 카메라 촬영", key="mode_camera", width='stretch'):
                     st.session_state.input_mode = "camera"
                     st.rerun()
 
@@ -429,20 +432,20 @@ def render() -> None:
                         ) - 1
                     pix = doc[pidx].get_pixmap(matrix=fitz.Matrix(1.2, 1.2))
                     img = PILImage.frombytes("RGB", [pix.width, pix.height], pix.samples)
-                    st.image(img, caption=f"{pidx+1}/{total} 페이지", use_container_width=True)
+                    st.image(img, caption=f"{pidx+1}/{total} 페이지", width='stretch')
                     upload_data = {
                         "file_name": uploaded.name,
                         "content": uploaded_bytes,
                     }
                 else:
                     img = PILImage.open(io.BytesIO(uploaded_bytes)).convert("RGB")
-                    st.image(img, caption="업로드된 이미지", use_container_width=True)
+                    st.image(img, caption="업로드된 이미지", width='stretch')
                     upload_data = {
                         "file_name": uploaded.name,
                         "content": uploaded_bytes,
                     }
 
-                if upload_data and st.button("분석 시작", use_container_width=True, key="run_upload"):
+                if upload_data and st.button("분석 시작", width='stretch', key="run_upload"):
                     _queue_processing(upload_data["file_name"], upload_data["content"])
                     st.rerun()
 
@@ -470,15 +473,15 @@ def render() -> None:
                 img_data = st.session_state.camera_image
                 _, b64 = img_data.split(",", 1)
                 img = PILImage.open(io.BytesIO(base64.b64decode(b64))).convert("RGB")
-                st.image(img, caption="촬영된 문서", use_container_width=True)
+                st.image(img, caption="촬영된 문서", width='stretch')
 
                 c1, c2 = st.columns(2)
                 with c1:
-                    if st.button("다시 촬영 (R)", use_container_width=True, key="cam_retry"):
+                    if st.button("다시 촬영 (R)", width='stretch', key="cam_retry"):
                         st.session_state.camera_image = None
                         st.rerun()
                 with c2:
-                    if st.button("분석 시작 (Enter)", use_container_width=True, key="cam_use"):
+                    if st.button("분석 시작 (Enter)", width='stretch', key="cam_use"):
                         _queue_processing('camera_capture.jpg', base64.b64decode(b64))
                         st.session_state.camera_image = None
                         st.rerun()
@@ -567,6 +570,7 @@ def _queue_processing(file_name: str, content: bytes) -> None:
     }
     st.session_state.processing_step = 'analysis'
     st.session_state.processing_message = '분석중입니다. OCR 처리와 요약을 준비하고 있습니다.'
+    st.session_state.processing_error = ''
     st.session_state.raw_text = ''
     st.session_state.summary = ''
     st.session_state.quiz = []
@@ -584,7 +588,7 @@ def _render_processing_status(job_id: str):
     try:
         result = get_analysis_job_result(job_id)
     except Exception as exc:
-        st.error(f'분석 실패: {exc}')
+        st.session_state.processing_error = f'분석 실패: {exc}'
         st.session_state.processing_job = None
         st.session_state.processing_step = None
         st.session_state.processing_message = ''
@@ -642,6 +646,7 @@ def _reset():
     for k in ["raw_text","summary","quiz","memo_keywords",
               "qa_history","audio_bytes","active_panel","qa_new_answer",
               "feature","input_mode","camera_image","pipeline_warnings",
+              "processing_error",
               "processing_job","processing_step","processing_message"]:
         st.session_state[k] = (
             None  if k in (
@@ -655,5 +660,6 @@ def _reset():
             []    if k in ("quiz","memo_keywords","qa_history") else
             False if k == "qa_new_answer" else
             []    if k == "pipeline_warnings" else
+            ""    if k == "processing_error" else
             "summary" if k == "active_panel" else ""
         )

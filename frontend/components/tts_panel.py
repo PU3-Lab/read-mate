@@ -51,7 +51,7 @@ document.getElementById('ap').focus();
             data=audio,
             file_name='readmate.wav',
             mime='audio/wav',
-            use_container_width=True,
+            width='stretch',
         )
 
     elif summary:

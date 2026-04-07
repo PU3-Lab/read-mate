@@ -48,15 +48,15 @@ def render_summary_panel():
     columns = st.columns(3 if has_quiz else 2)
     c1, c2 = columns[0], columns[1]
     with c1:
-        if st.button('다시 듣기', use_container_width=True, key='sum_r'):
+        if st.button('다시 듣기', width='stretch', key='sum_r'):
             st.rerun()
     with c2:
-        if st.button('질의응답', use_container_width=True, key='sum_q'):
+        if st.button('질의응답', width='stretch', key='sum_q'):
             st.session_state.active_panel = 'qa'
             st.rerun()
     if has_quiz:
         with columns[2]:
-            if st.button('퀴즈', use_container_width=True, key='sum_p'):
+            if st.button('퀴즈', width='stretch', key='sum_p'):
                 st.session_state.active_panel = 'quiz'
                 st.rerun()
 

@@ -255,7 +255,7 @@ body{{background:transparent;font-family:'Gowun Dodum',sans-serif;}}
     )
 
     st.markdown('<div class="btn-sec">', unsafe_allow_html=True)
-    if st.button('← 요약으로 돌아가기', use_container_width=True, key='quiz_back'):
+    if st.button('← 요약으로 돌아가기', width='stretch', key='quiz_back'):
         st.session_state.active_panel = 'summary'
         st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)

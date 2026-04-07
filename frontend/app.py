@@ -34,6 +34,7 @@ def init():
         'qa_history': [],
         'audio_bytes': None,
         'pipeline_warnings': [],
+        'processing_error': '',
         'processing_job': None,
         'processing_step': None,
         'processing_message': '',
@@ -91,7 +92,7 @@ if st.session_state.feature is None:
         """,
             unsafe_allow_html=True,
         )
-        if st.button('1번 · 녹음 분석 시작', key='btn_audio', use_container_width=True):
+        if st.button('1번 · 녹음 분석 시작', key='btn_audio', width='stretch'):
             st.session_state.feature = 'audio'
             st.rerun()
 
@@ -107,7 +108,7 @@ if st.session_state.feature is None:
             unsafe_allow_html=True,
         )
         if st.button(
-            '2번 · 자료 분석 시작', key='btn_material', use_container_width=True
+            '2번 · 자료 분석 시작', key='btn_material', width='stretch'
         ):
             st.session_state.feature = 'material'
             st.rerun()

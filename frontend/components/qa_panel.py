@@ -227,19 +227,19 @@ def render_qa_panel():
             key='qa_text',
         )
     with c2:
-        if st.button('전송', key='qa_send', use_container_width=True) and tq.strip():
+        if st.button('전송', key='qa_send', width='stretch') and tq.strip():
             _ask(tq.strip())
 
     c3, c4 = st.columns(2)
     with c3:
         st.markdown('<div class="btn-sec">', unsafe_allow_html=True)
-        if st.button('←   요약', use_container_width=True, key='qa_back'):
+        if st.button('←   요약', width='stretch', key='qa_back'):
             st.session_state.active_panel = 'summary'
             st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
     with c4:
         st.markdown('<div class="btn-sec">', unsafe_allow_html=True)
-        if st.button('🗑️ 대화 초기화', use_container_width=True, key='qa_clear'):
+        if st.button('🗑️ 대화 초기화', width='stretch', key='qa_clear'):
             st.session_state.qa_history = []
             st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)

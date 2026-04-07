@@ -86,6 +86,9 @@ _A11Y_JS = """
 
 
 def render() -> None:
+    if st.session_state.get('processing_error'):
+        st.error(st.session_state.processing_error)
+
     st.markdown('<div class="btn-sec">', unsafe_allow_html=True)
     if st.button('ReadMate', key='back_audio'):
         _reset()
@@ -122,7 +125,7 @@ def render() -> None:
         if uploaded:
             ext = uploaded.name.split('.')[-1].lower()
             st.audio(uploaded, format=f'audio/{ext}')
-            if st.button('분석 시작', use_container_width=True, key='run_audio'):
+            if st.button('분석 시작', width='stretch', key='run_audio'):
                 _queue_processing(uploaded.name, uploaded.getvalue())
                 st.rerun()
 
@@ -168,6 +171,7 @@ def _queue_processing(file_name: str, audio_bytes: bytes) -> None:
     st.session_state.processing_message = (
         '분석중입니다. 음성 인식과 요약을 준비하고 있습니다.'
     )
+    st.session_state.processing_error = ''
     st.session_state.raw_text = ''
     st.session_state.summary = ''
     st.session_state.quiz = []
@@ -185,7 +189,7 @@ def _render_processing_status(job_id: str):
     try:
         result = get_analysis_job_result(job_id)
     except Exception as exc:
-        st.error(f'분석 실패: {exc}')
+        st.session_state.processing_error = f'분석 실패: {exc}'
         st.session_state.processing_job = None
         st.session_state.processing_step = None
         st.session_state.processing_message = ''
@@ -251,6 +255,7 @@ def _reset():
         'qa_new_answer',
         'feature',
         'pipeline_warnings',
+        'processing_error',
         'processing_job',
         'processing_step',
         'processing_message',
@@ -264,6 +269,8 @@ def _reset():
             if k == 'qa_new_answer'
             else []
             if k == 'pipeline_warnings'
+            else ''
+            if k == 'processing_error'
             else 'summary'
             if k == 'active_panel'
             else ''
