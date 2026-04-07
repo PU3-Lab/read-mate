@@ -3,7 +3,6 @@ import io
 
 import fitz
 import streamlit as st
-import streamlit.components.v1 as components
 from components.result_panel import render_result_panel
 from job_runner import (
     get_analysis_job_progress,
@@ -339,78 +338,91 @@ def render() -> None:
     if st.session_state.get('processing_error'):
         st.error(st.session_state.processing_error)
 
-    for k, v in [("input_mode", None), ("camera_image", None)]:
+    for k, v in [('input_mode', None), ('camera_image', None)]:
         if k not in st.session_state:
             st.session_state[k] = v
 
     st.markdown('<div class="btn-sec">', unsafe_allow_html=True)
-    if st.button("ReadMate", key="back_material"):
+    if st.button('ReadMate', key='back_material'):
         _reset()
         st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
 
-    st.markdown('<div class="rm-page-title">📄 강의 자료 분석</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="rm-page-title">📄 강의 자료 분석</div>', unsafe_allow_html=True
+    )
 
     # 공통 브릿지 (항상 렌더)
-    components.html(_BRIDGE_JS, height=0)
+    st.iframe(_BRIDGE_JS, height=1)
 
-    if st.session_state.get("processing_job"):
+    if st.session_state.get('processing_job'):
         render_result_panel()
         _continue_processing()
 
-    elif st.session_state.get("raw_text"):
+    elif st.session_state.get('raw_text'):
         render_result_panel()
 
     else:
-
         # ── 모드 선택 ─────────────────────────────
         if st.session_state.input_mode is None:
-
-            st.markdown("""
+            st.markdown(
+                """
             <div class="kb-hint">
               <strong>1</strong> : 파일 업로드 &nbsp;|&nbsp;
               <strong>2</strong> : 카메라 촬영 &nbsp;|&nbsp;
               <strong>Backspace</strong> : 홈으로
             </div>
-            """, unsafe_allow_html=True)
+            """,
+                unsafe_allow_html=True,
+            )
 
-            c1, c2 = st.columns(2, gap="large")
+            c1, c2 = st.columns(2, gap='large')
             with c1:
-                st.markdown("""
+                st.markdown(
+                    """
                 <div class="feature-card">
                   <div class="feature-icon">📁</div>
                   <div class="feature-title">파일 업로드</div>
                   <div class="feature-desc">PDF 또는 이미지 파일을<br>직접 올려 분석해요</div>
                 </div>
-                """, unsafe_allow_html=True)
-                if st.button("1번 · 파일 업로드", key="mode_upload", use_container_width=True):
-                    st.session_state.input_mode = "upload"
+                """,
+                    unsafe_allow_html=True,
+                )
+                if st.button(
+                    '1번 · 파일 업로드', key='mode_upload', use_container_width=True
+                ):
+                    st.session_state.input_mode = 'upload'
                     st.rerun()
 
             with c2:
-                st.markdown("""
+                st.markdown(
+                    """
                 <div class="feature-card">
                   <div class="feature-icon">📷</div>
                   <div class="feature-title">카메라 촬영</div>
                   <div class="feature-desc">카메라로 문서를 촬영하면<br>바로 분석해드려요</div>
                 </div>
-                """, unsafe_allow_html=True)
-                if st.button("2번 · 카메라 촬영", key="mode_camera", use_container_width=True):
-                    st.session_state.input_mode = "camera"
+                """,
+                    unsafe_allow_html=True,
+                )
+                if st.button(
+                    '2번 · 카메라 촬영', key='mode_camera', use_container_width=True
+                ):
+                    st.session_state.input_mode = 'camera'
                     st.rerun()
 
             st.iframe(_intro_js(), height=1)
 
         # ── 파일 업로드 모드 ──────────────────────
-        elif st.session_state.input_mode == "upload":
-
+        elif st.session_state.input_mode == 'upload':
             st.markdown('<div class="btn-sec">', unsafe_allow_html=True)
-            if st.button("← 모드 선택", key="back_to_mode_upload"):
+            if st.button('← 모드 선택', key='back_to_mode_upload'):
                 st.session_state.input_mode = None
                 st.rerun()
             st.markdown('</div>', unsafe_allow_html=True)
 
-            st.markdown("""
+            st.markdown(
+                """
             <div class="kb-hint">
               <strong>Tab</strong> : 버튼 이동 &nbsp;|&nbsp;
               <strong>Enter</strong> : 파일 탐색기 열기<br>
@@ -418,74 +430,99 @@ def render() -> None:
               <strong>Enter</strong> &nbsp;|&nbsp;
               <strong>Backspace</strong> : 모드 선택으로
             </div>
-            """, unsafe_allow_html=True)
+            """,
+                unsafe_allow_html=True,
+            )
 
             uploaded = st.file_uploader(
-                "강의 자료 (PDF · JPG · PNG · WEBP)",
-                type=["pdf","jpg","jpeg","png","webp","bmp"],
-                label_visibility="visible",
+                '강의 자료 (PDF · JPG · PNG · WEBP)',
+                type=['pdf', 'jpg', 'jpeg', 'png', 'webp', 'bmp'],
+                label_visibility='visible',
             )
 
             if uploaded:
                 upload_data = None
                 uploaded_bytes = uploaded.getvalue()
-                if uploaded.name.lower().endswith(".pdf"):
-                    st.info(f"📄 {uploaded.name}")
-                    doc = fitz.open(stream=uploaded_bytes, filetype="pdf")
+                if uploaded.name.lower().endswith('.pdf'):
+                    st.info(f'📄 {uploaded.name}')
+                    doc = fitz.open(stream=uploaded_bytes, filetype='pdf')
                     total = len(doc)
                     pidx = 0
                     if total > 1:
-                        pidx = st.number_input(
-                            f"분석할 페이지 (1~{total})", 1, total, 1, 1
-                        ) - 1
+                        pidx = (
+                            st.number_input(
+                                f'분석할 페이지 (1~{total})', 1, total, 1, 1
+                            )
+                            - 1
+                        )
                     pix = doc[pidx].get_pixmap(matrix=fitz.Matrix(1.2, 1.2))
-                    img = PILImage.frombytes("RGB", [pix.width, pix.height], pix.samples)
-                    st.image(img, caption=f"{pidx+1}/{total} 페이지", use_container_width=True)
-                    upload_data = {"file_name": uploaded.name, "content": uploaded_bytes}
+                    img = PILImage.frombytes(
+                        'RGB', [pix.width, pix.height], pix.samples
+                    )
+                    st.image(
+                        img,
+                        caption=f'{pidx + 1}/{total} 페이지',
+                        use_container_width=True,
+                    )
+                    upload_data = {
+                        'file_name': uploaded.name,
+                        'content': uploaded_bytes,
+                    }
                 else:
-                    img = PILImage.open(io.BytesIO(uploaded_bytes)).convert("RGB")
-                    st.image(img, caption="업로드된 이미지", use_container_width=True)
-                    upload_data = {"file_name": uploaded.name, "content": uploaded_bytes}
+                    img = PILImage.open(io.BytesIO(uploaded_bytes)).convert('RGB')
+                    st.image(img, caption='업로드된 이미지', use_container_width=True)
+                    upload_data = {
+                        'file_name': uploaded.name,
+                        'content': uploaded_bytes,
+                    }
 
-                if upload_data and st.button("분석 시작", use_container_width=True, key="run_upload"):
-                    _tts_notify("분석을 시작합니다. 잠시만 기다려주세요.")
-                    _queue_processing(upload_data["file_name"], upload_data["content"])
+                if upload_data and st.button(
+                    '분석 시작', use_container_width=True, key='run_upload'
+                ):
+                    _tts_notify('분석을 시작합니다. 잠시만 기다려주세요.')
+                    _queue_processing(upload_data['file_name'], upload_data['content'])
                     st.rerun()
 
             st.iframe(_upload_js(), height=1)
 
         # ── 카메라 촬영 모드 ──────────────────────
-        elif st.session_state.input_mode == "camera":
-
+        elif st.session_state.input_mode == 'camera':
             st.markdown('<div class="btn-sec">', unsafe_allow_html=True)
-            if st.button("← 모드 선택", key="back_to_mode_camera"):
+            if st.button('← 모드 선택', key='back_to_mode_camera'):
                 st.session_state.input_mode = None
                 st.session_state.camera_image = None
                 st.rerun()
             st.markdown('</div>', unsafe_allow_html=True)
 
             if st.session_state.camera_image:
-                st.markdown("""
+                st.markdown(
+                    """
                 <div class="kb-hint">
                   <strong>Enter</strong> : 분석 시작 &nbsp;|&nbsp;
                   <strong>R</strong> : 다시 촬영 &nbsp;|&nbsp;
                   <strong>Backspace</strong> : 모드 선택으로
                 </div>
-                """, unsafe_allow_html=True)
+                """,
+                    unsafe_allow_html=True,
+                )
 
                 img_data = st.session_state.camera_image
-                _, b64 = img_data.split(",", 1)
-                img = PILImage.open(io.BytesIO(base64.b64decode(b64))).convert("RGB")
-                st.image(img, caption="촬영된 문서", use_container_width=True)
+                _, b64 = img_data.split(',', 1)
+                img = PILImage.open(io.BytesIO(base64.b64decode(b64))).convert('RGB')
+                st.image(img, caption='촬영된 문서', use_container_width=True)
 
                 c1, c2 = st.columns(2)
                 with c1:
-                    if st.button("다시 촬영 (R)", use_container_width=True, key="cam_retry"):
+                    if st.button(
+                        '다시 촬영 (R)', use_container_width=True, key='cam_retry'
+                    ):
                         st.session_state.camera_image = None
                         st.rerun()
                 with c2:
-                    if st.button("분석 시작 (Enter)", use_container_width=True, key="cam_use"):
-                        _tts_notify("분석을 시작합니다. 잠시만 기다려주세요.")
+                    if st.button(
+                        '분석 시작 (Enter)', use_container_width=True, key='cam_use'
+                    ):
+                        _tts_notify('분석을 시작합니다. 잠시만 기다려주세요.')
                         _queue_processing('camera_capture.jpg', base64.b64decode(b64))
                         st.session_state.camera_image = None
                         st.rerun()
@@ -496,8 +533,11 @@ def render() -> None:
             else:
                 st.iframe(_camera_html(), height=680)
 
-                cam_val = st.text_input("cam_bridge", key="cam_bridge", label_visibility="collapsed")
-                components.html("""
+                cam_val = st.text_input(
+                    'cam_bridge', key='cam_bridge', label_visibility='collapsed'
+                )
+                st.iframe(
+                    """
 <script>
 (function(){
   const inputs=window.parent.document.querySelectorAll('input[type="text"]');
@@ -512,9 +552,11 @@ def render() -> None:
   });
 })();
 </script>
-""", height=0)
+""",
+                    height=1,
+                )
 
-                if cam_val and cam_val.startswith("data:image"):
+                if cam_val and cam_val.startswith('data:image'):
                     st.session_state.camera_image = cam_val
                     st.rerun()
 
@@ -522,7 +564,8 @@ def render() -> None:
 def _tts_notify(msg: str) -> None:
     """Python 단계 전환 시 브라우저 TTS로 안내 메시지를 재생한다."""
     safe = msg.replace("'", "\\'")
-    components.html(f"""
+    st.iframe(
+        f"""
 <script>
 (function(){{
   if(!window.speechSynthesis) return;
@@ -532,13 +575,15 @@ def _tts_notify(msg: str) -> None:
   window.speechSynthesis.speak(u);
 }})();
 </script>
-""", height=0)
+""",
+        height=1,
+    )
 
 
 def _run(file_name: str, content: bytes) -> bool:
     """문서 파일을 ReadingPipeline으로 분석한다."""
     try:
-        with st.spinner("📄 자료 분석 중..."):
+        with st.spinner('📄 자료 분석 중...'):
             result = analyze_content(file_name=file_name, content=content)
     except Exception as exc:
         st.error(f'분석 실패: {exc}')
@@ -572,7 +617,9 @@ def _queue_processing(file_name: str, content: bytes) -> None:
         'input_label': 'OCR 처리',
     }
     st.session_state.processing_step = 'analysis'
-    st.session_state.processing_message = '분석중입니다. OCR 처리와 요약을 준비하고 있습니다.'
+    st.session_state.processing_message = (
+        '분석중입니다. OCR 처리와 요약을 준비하고 있습니다.'
+    )
     st.session_state.processing_error = ''
     st.session_state.raw_text = ''
     st.session_state.summary = ''
@@ -591,14 +638,14 @@ def _queue_processing(file_name: str, content: bytes) -> None:
 
 # ── 진행 메시지별 TTS 문구 매핑 ─────────────────────────
 _PROGRESS_TTS: dict[str, str] = {
-    'OCR':  '잠시만 기다려주세요. 로딩 중입니다.',
-    'LLM':  '잠시만 기다려주세요. 로딩 중입니다.',
-    'TTS':  '잠시만 기다려주세요. 로딩 중입니다.',
+    'OCR': '잠시만 기다려주세요. 로딩 중입니다.',
+    'LLM': '잠시만 기다려주세요. 로딩 중입니다.',
+    'TTS': '잠시만 기다려주세요. 로딩 중입니다.',
 }
-_last_tts_msg: dict = {}   # fragment 재진입마다 중복 재생 방지
+_last_tts_msg: dict = {}  # fragment 재진입마다 중복 재생 방지
 
 
-@st.fragment(run_every="1.0s")
+@st.fragment(run_every='1.0s')
 def _render_processing_status(job_id: str):
     """진행 상황을 깜빡임 없이 업데이트하기 위한 프래그먼트."""
     try:
@@ -627,7 +674,8 @@ def _render_processing_status(job_id: str):
         safe_msg = tts_msg.replace("'", "\\'")
         # step_changed 이면 즉시 1회 재생 후 interval 시작
         # 아니면 interval만 유지 (페이지 재진입 시 interval이 끊기므로 항상 재등록)
-        components.html(f"""
+        st.iframe(
+            f"""
 <script>
 (function() {{
   if (!window.speechSynthesis) return;
@@ -654,9 +702,12 @@ def _render_processing_status(job_id: str):
   window._rmTtsInterval = setInterval(speak, 8000);
 }})();
 </script>
-""", height=0)
+""",
+            height=1,
+        )
 
-        st.markdown(f"""
+        st.markdown(
+            f"""
             <div class="rm-progress-wrap">
                 <div class="rm-progress-dots">
                     <span></span><span></span><span></span>
@@ -703,11 +754,14 @@ def _render_processing_status(job_id: str):
                     word-break: keep-all;
                 }}
             </style>
-        """, unsafe_allow_html=True)
+        """,
+            unsafe_allow_html=True,
+        )
 
     else:
         # 완료: interval 중단 + 완료 안내
-        components.html("""
+        st.iframe(
+            """
 <script>
 (function() {
   if (window._rmTtsInterval) {
@@ -717,7 +771,9 @@ def _render_processing_status(job_id: str):
   if (window.speechSynthesis) window.speechSynthesis.cancel();
 })();
 </script>
-""", height=0)
+""",
+            height=1,
+        )
         st.session_state.raw_text = result['raw_text']
         st.session_state.summary = result['summary']
         st.session_state.quiz = result['quiz']
@@ -743,27 +799,50 @@ def _continue_processing() -> None:
 
 
 def _reset():
-    for k in ["raw_text","summary","quiz","memo_keywords",
-              "qa_history","audio_bytes","audio_mime","audio_file_name","active_panel","qa_new_answer",
-              "feature","input_mode","camera_image","pipeline_warnings",
-              "processing_error",
-              "processing_job","processing_step","processing_message",
-              "summary_play_key","summary_play_token"]:
+    for k in [
+        'raw_text',
+        'summary',
+        'quiz',
+        'memo_keywords',
+        'qa_history',
+        'audio_bytes',
+        'audio_mime',
+        'audio_file_name',
+        'active_panel',
+        'qa_new_answer',
+        'feature',
+        'input_mode',
+        'camera_image',
+        'pipeline_warnings',
+        'processing_error',
+        'processing_job',
+        'processing_step',
+        'processing_message',
+        'summary_play_key',
+        'summary_play_token',
+    ]:
         st.session_state[k] = (
-            None  if k in (
-                "audio_bytes",
-                "audio_mime",
-                "audio_file_name",
-                "feature",
-                "input_mode",
-                "camera_image",
-                "processing_job",
-                "processing_step",
-            ) else
-            []    if k in ("quiz","memo_keywords","qa_history","pipeline_warnings") else
-            False if k == "qa_new_answer" else
-            ""    if k == "processing_error" else
-            "summary" if k == "active_panel" else
-            0 if k == "summary_play_token" else
-            ""
+            None
+            if k
+            in (
+                'audio_bytes',
+                'audio_mime',
+                'audio_file_name',
+                'feature',
+                'input_mode',
+                'camera_image',
+                'processing_job',
+                'processing_step',
+            )
+            else []
+            if k in ('quiz', 'memo_keywords', 'qa_history', 'pipeline_warnings')
+            else False
+            if k == 'qa_new_answer'
+            else ''
+            if k == 'processing_error'
+            else 'summary'
+            if k == 'active_panel'
+            else 0
+            if k == 'summary_play_token'
+            else ''
         )
