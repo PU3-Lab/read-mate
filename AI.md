@@ -95,6 +95,8 @@
 - 함수 안에서 import 하지 말것
 - 구현부는 별도 파일로, 같은 파일에 클래스 하나 이상 넣지 말것
 - import 시 `src.` 사용 금지
+- `frontend`는 패키지 루트로 취급하지 말고, `frontend/app.py` 기준으로 하위 모듈을 직접 import 할것
+- `frontend` 내부에서 `sys.path` 조작 금지
 - 모델 로드는 싱글톤 패턴 (매 호출마다 재로드 금지)
 - 모든 함수에 docstring 작성 (한국어 가능)
 - 타입 힌트 필수
@@ -144,6 +146,7 @@ out   = tmp_path() / 'ocr_out.txt'  # data/tmp/ocr_out.txt
 - 에러 발생 시 원인 분석 → 수정 → 재확인까지 한 번에 처리
 - 디바이스 관련 에러: CUDA → MPS → CPU 폴백 순서로 확인 / bf16 → float32 dtype 폴백
 - 패키지 충돌은 `pyproject.toml` 직접 수정
+- OCR 진행 상태가 필요하면 UI 메시지가 아니라 서버 로그(`logger.info`)로 남길 것
 
 ### 코드 리뷰
 - 성능, 가독성, 크로스플랫폼 호환성 세 가지 기준으로 검토
