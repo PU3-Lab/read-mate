@@ -8,6 +8,7 @@ from __future__ import annotations
 import logging
 from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
 from models.schemas import (
     InputPayload,
@@ -290,18 +291,14 @@ def create_default_reading_pipeline() -> ReadingPipeline:
     from services.ocr_service import Qwen2VLEngine
     from services.pdf_service import PyPDFEngine
     from services.stt_whisper_service import ReadMateSTT
+    from services.tts_elevenlabs import ElevenLabsTTS
     from services.tts_unavailable import UnavailableTTSEngine
-    from services.tts_zonos import ZonosTTSEngine
 
     ocr = Qwen2VLEngine()
     try:
-        tts_engine: BaseTTS = ZonosTTSEngine()
+        tts_engine: BaseTTS = ElevenLabsTTS()
     except Exception as exc:
-        reason = (
-            'Zonos TTS 초기화 실패: '
-            f'{exc}. `uv sync`로 의존성을 맞추고, macOS/Linux는 '
-            '`brew install espeak-ng`도 확인하세요.'
-        )
+        reason = f'ElevenLabs TTS 초기화 실패: {exc}. .env에 ELEVENLABS_API_KEY를 확인하세요.'
         logger.warning('[tts] fallback to unavailable engine: %s', reason)
         tts_engine = UnavailableTTSEngine(reason)
 
@@ -390,7 +387,7 @@ def analyze_content(
         content=content,
         voice_preset=voice_preset,
     )
-    result = get_default_reading_pipeline().run_analysis(payload, on_progress=on_progress)
+    result = get_default_reading_pipeline().run(payload, on_progress=on_progress)
     return to_frontend_state(result)
 
 
@@ -413,6 +410,8 @@ def synthesize_summary_audio(
     if not normalized_summary:
         return {
             'audio_bytes': None,
+            'audio_mime': None,
+            'audio_file_name': None,
             'pipeline_warnings': ['TTS 생성할 요약이 비어 있습니다.'],
         }
 
@@ -424,13 +423,13 @@ def synthesize_summary_audio(
     if tts_result is None:
         return {
             'audio_bytes': None,
+            'audio_mime': None,
+            'audio_file_name': None,
             'pipeline_warnings': warnings,
         }
 
-    audio_path = Path(tts_result.audio_path)
-    audio_bytes = audio_path.read_bytes() if audio_path.exists() else None
     return {
-        'audio_bytes': audio_bytes,
+        **_read_audio_payload(tts_result),
         'pipeline_warnings': warnings,
     }
 
@@ -486,7 +485,7 @@ def to_frontend_state(result: PipelineResult) -> dict[str, object]:
         'summary': result.llm_result.summary,
         'quiz': _normalize_quiz(result.llm_result.quiz),
         'memo_keywords': result.llm_result.key_points,
-        'audio_bytes': _read_audio_bytes(result),
+        **_read_audio_payload(result.tts_result),
         'pipeline_warnings': result.warnings,
     }
 
@@ -514,21 +513,35 @@ def _normalize_quiz(quiz: list | None) -> list[dict[str, object]]:
     ]
 
 
-def _read_audio_bytes(result: PipelineResult) -> bytes | None:
-    """
-    TTS 결과 파일을 읽어 audio bytes로 변환한다.
+def _resolve_audio_meta(audio_path: Path) -> tuple[str, str]:
+    """오디오 파일 경로에서 MIME 타입과 기본 파일명을 계산한다."""
+    if audio_path.suffix.lower() == '.mp3':
+        return 'audio/mpeg', 'readmate.mp3'
+    return 'audio/wav', 'readmate.wav'
 
-    Args:
-        result: 파이프라인 실행 결과
 
-    Returns:
-        bytes | None: 재생 가능한 오디오 바이트
-    """
-    if result.tts_result is None:
-        return None
+def _read_audio_payload(tts_result: TTSResult | None) -> dict[str, object]:
+    """TTS 결과 파일을 읽고 프런트엔드용 메타데이터를 함께 반환한다."""
+    if tts_result is None:
+        return {
+            'audio_bytes': None,
+            'audio_mime': None,
+            'audio_file_name': None,
+        }
 
-    audio_path = Path(result.tts_result.audio_path)
+    audio_path = Path(tts_result.audio_path)
     if not audio_path.exists():
-        return None
+        return {
+            'audio_bytes': None,
+            'audio_mime': None,
+            'audio_file_name': None,
+        }
 
-    return audio_path.read_bytes()
+    audio_mime, audio_file_name = _resolve_audio_meta(audio_path)
+    audio_bytes = audio_path.read_bytes()
+    audio_path.unlink(missing_ok=True)
+    return {
+        'audio_bytes': audio_bytes,
+        'audio_mime': audio_mime,
+        'audio_file_name': audio_file_name,
+    }

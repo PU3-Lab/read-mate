@@ -11,20 +11,14 @@ from job_runner import (
     submit_analysis_job,
 )
 from PIL import Image as PILImage
+from speak_js import make_speak_fn
 
 from pipelines import analyze_content
 
-_INTRO_JS = """
+_INTRO_TEMPLATE = """
 <script>
 (function(){
-  function speak(t, cb){
-    if(!window.speechSynthesis){if(cb)cb();return;}
-    window.speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(t);
-    u.lang='ko-KR'; u.rate=1.0;
-    if(cb) u.onend=cb;
-    window.speechSynthesis.speak(u);
-  }
+__SPEAK_FN__
 
   setTimeout(()=>{
     speak(
@@ -80,17 +74,10 @@ _INTRO_JS = """
 </script>
 """
 
-_UPLOAD_JS = """
+_UPLOAD_TEMPLATE = """
 <script>
 (function(){
-  function speak(t, cb){
-    if(!window.speechSynthesis){if(cb)cb();return;}
-    window.speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(t);
-    u.lang='ko-KR'; u.rate=1.0;
-    if(cb) u.onend=cb;
-    window.speechSynthesis.speak(u);
-  }
+__SPEAK_FN__
 
   setTimeout(()=>{
     speak(
@@ -145,7 +132,7 @@ _UPLOAD_JS = """
 </script>
 """
 
-_CAMERA_HTML = """
+_CAMERA_TEMPLATE = """
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
 body{background:transparent;font-family:'Gowun Dodum',sans-serif;}
@@ -209,13 +196,7 @@ canvas{display:none;}
 
   let captured = false;
 
-  function speak(t, cb){
-    window.speechSynthesis && window.speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(t);
-    u.lang='ko-KR'; u.rate=1.0;
-    if(cb) u.onend=cb;
-    window.speechSynthesis && window.speechSynthesis.speak(u);
-  }
+__SPEAK_FN__
 
   speak('카메라를 불러오는 중입니다. 잠시 기다려주세요.', async ()=>{
     try{
@@ -322,6 +303,38 @@ window.addEventListener('message', function(e){
 """
 
 
+def _intro_js() -> str:
+    return _INTRO_TEMPLATE.replace('__SPEAK_FN__', make_speak_fn())
+
+
+def _upload_js() -> str:
+    return _UPLOAD_TEMPLATE.replace('__SPEAK_FN__', make_speak_fn())
+
+
+def _camera_html() -> str:
+    return _CAMERA_TEMPLATE.replace('__SPEAK_FN__', make_speak_fn())
+
+
+def _camera_result_js() -> str:
+    return f"""
+<script>
+(function(){{
+  {make_speak_fn()}
+  setTimeout(()=>speak('촬영된 이미지입니다. Enter 로 분석을 시작하거나 R 로 다시 촬영하세요.'),400);
+  function onKey(e){{
+    const tag=e.target.tagName;
+    if(tag==='INPUT'||tag==='TEXTAREA')return;
+    if(e.code==='Enter'){{e.preventDefault();speak('분석을 시작합니다.',()=>window.parent.postMessage({{type:'rm_cam_use'}},'*'));}}
+    if(e.key.toLowerCase()==='r'){{speak('다시 촬영합니다.',()=>window.parent.postMessage({{type:'rm_cam_retry'}},'*'));}}
+    if(e.key==='Backspace'){{e.preventDefault();speak('모드 선택으로 돌아갑니다.',()=>window.parent.postMessage({{type:'rm_cam_back'}},'*'));}}
+  }}
+  document.addEventListener('keydown',onKey);
+  try{{window.parent.document.addEventListener('keydown',onKey);}}catch(err){{}}
+}})();
+</script>
+"""
+
+
 def render() -> None:
     if st.session_state.get('processing_error'):
         st.error(st.session_state.processing_error)
@@ -386,7 +399,7 @@ def render() -> None:
                     st.session_state.input_mode = "camera"
                     st.rerun()
 
-            components.html(_INTRO_JS, height=0)
+            st.iframe(_intro_js(), height=1)
 
         # ── 파일 업로드 모드 ──────────────────────
         elif st.session_state.input_mode == "upload":
@@ -439,7 +452,7 @@ def render() -> None:
                     _queue_processing(upload_data["file_name"], upload_data["content"])
                     st.rerun()
 
-            components.html(_UPLOAD_JS, height=0)
+            st.iframe(_upload_js(), height=1)
 
         # ── 카메라 촬영 모드 ──────────────────────
         elif st.session_state.input_mode == "camera":
@@ -477,47 +490,11 @@ def render() -> None:
                         st.session_state.camera_image = None
                         st.rerun()
 
-                components.html("""
-<script>
-(function(){
-  function speak(t,cb){
-    window.speechSynthesis&&window.speechSynthesis.cancel();
-    const u=new SpeechSynthesisUtterance(t);
-    u.lang='ko-KR';u.rate=1.0;if(cb)u.onend=cb;
-    window.speechSynthesis&&window.speechSynthesis.speak(u);
-  }
-  setTimeout(()=>speak('촬영된 이미지입니다. Enter 로 분석을 시작하거나 R 로 다시 촬영하세요.'),400);
-  function onKey(e){
-    const tag=e.target.tagName;
-    if(tag==='INPUT'||tag==='TEXTAREA')return;
-    if(e.code==='Enter'){e.preventDefault();speak('분석을 시작합니다.',()=>window.parent.postMessage({type:'rm_cam_use'},'*'));}
-    if(e.key.toLowerCase()==='r'){speak('다시 촬영합니다.',()=>window.parent.postMessage({type:'rm_cam_retry'},'*'));}
-    if(e.key==='Backspace'){e.preventDefault();speak('모드 선택으로 돌아갑니다.',()=>window.parent.postMessage({type:'rm_cam_back'},'*'));}
-  }
-  document.addEventListener('keydown',onKey);
-  try{window.parent.document.addEventListener('keydown',onKey);}catch(err){}
-})();
-</script>
-""", height=0)
+                # 키 이벤트 → postMessage
+                st.iframe(_camera_result_js(), height=1)
 
             else:
-                components.html(_CAMERA_HTML, height=680, scrolling=False)
-
-                components.html("""
-<script>
-window.addEventListener('message', function(e){
-  if(!e.data) return;
-  if(e.data.type==='rm_camera' && e.data.dataUrl){
-    const inp=window.parent.document.querySelector('input[data-rmcam]');
-    if(inp){inp.value=e.data.dataUrl;inp.dispatchEvent(new Event('input',{bubbles:true}));}
-  }
-  if(e.data.type==='rm_camera_confirm'){
-    const btns=window.parent.document.querySelectorAll('button');
-    for(const b of btns){if(b.innerText.includes('분석 시작')){b.click();break;}}
-  }
-});
-</script>
-""", height=0)
+                st.iframe(_camera_html(), height=680)
 
                 cam_val = st.text_input("cam_bridge", key="cam_bridge", label_visibility="collapsed")
                 components.html("""
@@ -572,9 +549,13 @@ def _run(file_name: str, content: bytes) -> bool:
     st.session_state.quiz = result['quiz']
     st.session_state.memo_keywords = result['memo_keywords']
     st.session_state.audio_bytes = result['audio_bytes']
+    st.session_state.audio_mime = result.get('audio_mime')
+    st.session_state.audio_file_name = result.get('audio_file_name')
     st.session_state.pipeline_warnings = result['pipeline_warnings']
     st.session_state.qa_history = []
     st.session_state.active_panel = 'summary'
+    st.session_state.summary_play_key = ''
+    st.session_state.summary_play_token = 0
     st.session_state.qa_new_answer = False
     return True
 
@@ -584,7 +565,7 @@ def _queue_processing(file_name: str, content: bytes) -> None:
     job_id = submit_analysis_job(
         file_name=file_name,
         content=content,
-        voice_preset='default',
+        voice_preset=st.session_state.get('selected_voice', 'JiYeong Kang'),
     )
     st.session_state.processing_job = {
         'job_id': job_id,
@@ -598,9 +579,13 @@ def _queue_processing(file_name: str, content: bytes) -> None:
     st.session_state.quiz = []
     st.session_state.memo_keywords = []
     st.session_state.audio_bytes = None
+    st.session_state.audio_mime = None
+    st.session_state.audio_file_name = None
     st.session_state.pipeline_warnings = []
     st.session_state.qa_history = []
     st.session_state.active_panel = 'summary'
+    st.session_state.summary_play_key = ''
+    st.session_state.summary_play_token = 0
     st.session_state.qa_new_answer = False
 
 
@@ -738,12 +723,14 @@ def _render_processing_status(job_id: str):
         st.session_state.quiz = result['quiz']
         st.session_state.memo_keywords = result['memo_keywords']
         st.session_state.audio_bytes = result['audio_bytes']
+        st.session_state.audio_mime = result.get('audio_mime')
+        st.session_state.audio_file_name = result.get('audio_file_name')
         st.session_state.pipeline_warnings = result['pipeline_warnings']
         st.session_state.processing_job = None
         st.session_state.processing_step = None
         st.session_state.processing_message = ''
-        _last_tts_msg.pop(job_id, None)
-        _tts_notify("분석이 완료되었습니다. 요약 화면으로 이동합니다.")
+        st.session_state.summary_play_key = ''
+        st.session_state.summary_play_token = 0
         st.rerun()
 
 
@@ -757,17 +744,26 @@ def _continue_processing() -> None:
 
 def _reset():
     for k in ["raw_text","summary","quiz","memo_keywords",
-              "qa_history","audio_bytes","active_panel","qa_new_answer",
+              "qa_history","audio_bytes","audio_mime","audio_file_name","active_panel","qa_new_answer",
               "feature","input_mode","camera_image","pipeline_warnings",
               "processing_error",
-              "processing_job","processing_step","processing_message"]:
+              "processing_job","processing_step","processing_message",
+              "summary_play_key","summary_play_token"]:
         st.session_state[k] = (
             None  if k in (
-                "audio_bytes","feature","input_mode","camera_image",
-                "processing_job","processing_step",
+                "audio_bytes",
+                "audio_mime",
+                "audio_file_name",
+                "feature",
+                "input_mode",
+                "camera_image",
+                "processing_job",
+                "processing_step",
             ) else
             []    if k in ("quiz","memo_keywords","qa_history","pipeline_warnings") else
             False if k == "qa_new_answer" else
             ""    if k == "processing_error" else
-            "summary" if k == "active_panel" else ""
+            "summary" if k == "active_panel" else
+            0 if k == "summary_play_token" else
+            ""
         )

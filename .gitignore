@@ -8,6 +8,8 @@ wheels/
 
 data/*
 !data/.gitkeep
+!data/static_tts/
+!data/static_tts/**
 outputs/
 .DS_Store
 

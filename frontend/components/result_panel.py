@@ -3,7 +3,6 @@ import streamlit as st
 from components.qa_panel import render_qa_panel
 from components.quiz_panel import render_quiz_panel
 from components.summary_panel import render_summary_panel
-from components.tts_panel import render_tts_panel
 
 
 def render_result_panel():
@@ -34,5 +33,3 @@ def render_result_panel():
         render_qa_panel()
     elif panel == 'quiz':
         render_quiz_panel()
-
-    render_tts_panel()
