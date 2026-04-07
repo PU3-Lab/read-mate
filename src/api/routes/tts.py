@@ -104,6 +104,7 @@ class SpeakRequest(BaseModel):
 
     text: str
     voice_name: str = 'JiYeong Kang'
+    allow_generation: bool = False
 
 
 @router.post('/speak')
@@ -138,6 +139,12 @@ async def speak_text(req: SpeakRequest) -> StreamingResponse:
                 io.BytesIO(cached_audio.audio_path.read_bytes()),
                 media_type=cached_audio.media_type,
                 headers={'X-ReadMate-TTS-Source': 'static-cache'},
+            )
+
+        if not req.allow_generation:
+            raise HTTPException(
+                status_code=400, 
+                detail='이 텍스트는 정적 TTS가 존재하지 않으며, 동적 생성(allow_generation)이 허용되지 않았습니다.'
             )
 
         tts = ElevenLabsTTS(api_key=ELEVENLABS_API_KEY)

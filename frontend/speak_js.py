@@ -34,6 +34,7 @@ def js_string(value: str) -> str:
 def make_speak_fn(
     voice_name: str | None = None,
     server_url: str | None = None,
+    allow_generation: bool = False,
 ) -> str:
     """
     ElevenLabs TTS를 사용하는 JS speak(t, cb) 함수 코드를 반환한다.
@@ -70,7 +71,7 @@ def make_speak_fn(
         f"      const resp = await fetch({server_js} + '/api/tts/speak', {{\n"
         f"        method: 'POST',\n"
         f"        headers: {{'Content-Type': 'application/json'}},\n"
-        f"        body: JSON.stringify({{text: t, voice_name: {voice_js}}})\n"
+        f"        body: JSON.stringify({{text: t, voice_name: {voice_js}, allow_generation: {'true' if allow_generation else 'false'}}})\n"
         f"      }});\n"
         f"      if (!resp.ok) throw new Error('TTS ' + resp.status);\n"
         f"      const blob = await resp.blob();\n"
