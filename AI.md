@@ -109,6 +109,7 @@
 
 ```python
 from lib.utils.device import available_device
+
 device = available_device()  # 'cuda' | 'mps' | 'cpu'
 ```
 
@@ -128,8 +129,8 @@ device = available_device()  # 'cuda' | 'mps' | 'cpu'
 ```python
 from lib.utils.path import model_path, tmp_path, images_path
 
-model = model_path('qwen2vl.bin')   # data/models/qwen2vl.bin
-out   = tmp_path() / 'ocr_out.txt'  # data/tmp/ocr_out.txt
+model = model_path('qwen2vl.bin')  # data/models/qwen2vl.bin
+out = tmp_path() / 'ocr_out.txt'  # data/tmp/ocr_out.txt
 ```
 
 ---
@@ -137,6 +138,7 @@ out   = tmp_path() / 'ocr_out.txt'  # data/tmp/ocr_out.txt
 ## 작업 방식
 
 ### 기본 원칙
+- 새 작업이 시직되면 새 브랜치를 생성하고 진행
 - 코드 작성 / 디버깅 / 리뷰는 **묻지 않고 바로 진행**
 - 작업 전 관련 파일 먼저 읽고 파악한 뒤 시작
 - 한 번에 하나의 모듈 완성 후 다음으로 이동

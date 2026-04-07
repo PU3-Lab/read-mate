@@ -97,6 +97,7 @@ ignore = [
 ]
 
 [tool.ruff.format]
+preview = true
 quote-style = "single"
 indent-style = "space"
 line-ending = "auto"
