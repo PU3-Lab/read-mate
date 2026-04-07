@@ -264,6 +264,16 @@
       "text": "지금부터 시작합니다.",
       "audio_file": "quiz/start_now.mp3",
       "voice_name": "*"
+    },
+    {
+      "text": "잠시만 기다려 주세요",
+      "audio_file": "common/wait_moment.mp3",
+      "voice_name": "*"
+    },
+    {
+      "text": "분석을 시작합니다. 잠시만 기다려 주세요",
+      "audio_file": "common/start_analysis_wait.mp3",
+      "voice_name": "*"
     }
   ]
 }

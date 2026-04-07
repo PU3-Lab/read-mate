@@ -205,7 +205,8 @@ def _render_processing_status(job_id: str):
     if result is None:
         # 아직 진행 중: CSS 스피너와 함께 진행 메시지 표시
         current_msg = get_analysis_job_progress(job_id)
-        st.markdown(f"""
+        st.markdown(
+            f"""
             <div style="display: flex; align-items: center; gap: 12px; padding: 1rem; background: #f8f9fa; border-radius: 10px; border: 1px solid #e9ecef;">
                 <div class="rm-loader"></div>
                 <div style="color: #495057; font-weight: 500;">{current_msg}</div>
@@ -224,7 +225,9 @@ def _render_processing_status(job_id: str):
                     100% {{ transform: rotate(360deg); }}
                 }}
             </style>
-        """, unsafe_allow_html=True)
+        """,
+            unsafe_allow_html=True,
+        )
     else:
         # 작업 완료: 결과를 세션 상태에 저장하고 전체 페이지 리런
         st.session_state.raw_text = result['raw_text']

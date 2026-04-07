@@ -242,7 +242,7 @@ __SPEAK_FN__
   }
 
   function doUse(){
-    speak('분석을 시작합니다. 잠시 기다려주세요.');
+    speak('분석을 시작합니다. 잠시만 기다려 주세요');
     window.parent.postMessage({type:'rm_camera_confirm'}, '*');
   }
 
@@ -323,7 +323,7 @@ def _camera_result_js() -> str:
   function onKey(e){{
     const tag=e.target.tagName;
     if(tag==='INPUT'||tag==='TEXTAREA')return;
-    if(e.code==='Enter'){{e.preventDefault();speak('분석을 시작합니다.',()=>window.parent.postMessage({{type:'rm_cam_use'}},'*'));}}
+    if(e.code==='Enter'){{e.preventDefault();speak('분석을 시작합니다. 잠시만 기다려 주세요',()=>window.parent.postMessage({{type:'rm_cam_use'}},'*'));}}
     if(e.key.toLowerCase()==='r'){{speak('다시 촬영합니다.',()=>window.parent.postMessage({{type:'rm_cam_retry'}},'*'));}}
     if(e.key==='Backspace'){{e.preventDefault();speak('모드 선택으로 돌아갑니다.',()=>window.parent.postMessage({{type:'rm_cam_back'}},'*'));}}
   }}
@@ -479,7 +479,7 @@ def render() -> None:
                 if upload_data and st.button(
                     '분석 시작', use_container_width=True, key='run_upload'
                 ):
-                    _tts_notify('분석을 시작합니다. 잠시만 기다려주세요.')
+                    _tts_notify('분석을 시작합니다. 잠시만 기다려 주세요')
                     _queue_processing(upload_data['file_name'], upload_data['content'])
                     st.rerun()
 
@@ -522,7 +522,7 @@ def render() -> None:
                     if st.button(
                         '분석 시작 (Enter)', use_container_width=True, key='cam_use'
                     ):
-                        _tts_notify('분석을 시작합니다. 잠시만 기다려주세요.')
+                        _tts_notify('분석을 시작합니다. 잠시만 기다려 주세요')
                         _queue_processing('camera_capture.jpg', base64.b64decode(b64))
                         st.session_state.camera_image = None
                         st.rerun()
@@ -562,17 +562,15 @@ def render() -> None:
 
 
 def _tts_notify(msg: str) -> None:
-    """Python 단계 전환 시 브라우저 TTS로 안내 메시지를 재생한다."""
+    """Python 단계 전환 시 백엔드 TTS로 안내 메시지를 재생한다."""
+    speak_js_code = make_speak_fn()
     safe = msg.replace("'", "\\'")
     st.iframe(
         f"""
 <script>
 (function(){{
-  if(!window.speechSynthesis) return;
-  window.speechSynthesis.cancel();
-  const u = new SpeechSynthesisUtterance('{safe}');
-  u.lang = 'ko-KR'; u.rate = 1.0;
-  window.speechSynthesis.speak(u);
+{speak_js_code}
+  speak('{safe}');
 }})();
 </script>
 """,
@@ -638,9 +636,9 @@ def _queue_processing(file_name: str, content: bytes) -> None:
 
 # ── 진행 메시지별 TTS 문구 매핑 ─────────────────────────
 _PROGRESS_TTS: dict[str, str] = {
-    'OCR': '잠시만 기다려주세요. 로딩 중입니다.',
-    'LLM': '잠시만 기다려주세요. 로딩 중입니다.',
-    'TTS': '잠시만 기다려주세요. 로딩 중입니다.',
+    'OCR': '잠시만 기다려 주세요',
+    'LLM': '잠시만 기다려 주세요',
+    'TTS': '잠시만 기다려 주세요',
 }
 _last_tts_msg: dict = {}  # fragment 재진입마다 중복 재생 방지
 
@@ -665,7 +663,7 @@ def _render_processing_status(job_id: str):
         # 단계가 바뀔 때 TTS 문구 결정
         tts_msg = next(
             (v for k, v in _PROGRESS_TTS.items() if k in current_msg),
-            '잠시만 기다려주세요. 로딩 중입니다.',
+            '잠시만 기다려 주세요',
         )
         step_changed = _last_tts_msg.get(job_id) != tts_msg
         if step_changed:

@@ -27,7 +27,7 @@ echo "=========================================="
 echo "  ReadMate 전체 시작"
 echo "  LLM 서버 : http://localhost:$SERVER_PORT"
 echo "  앱       : http://localhost:$APP_PORT"
-echo "  엔진     : ${LLM_ENGINE:-gemma (기본)}"
+echo "  엔진     : ${LLM_ENGINE:-openai (기본)}"
 echo "=========================================="
 echo ""
 
