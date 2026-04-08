@@ -8,7 +8,7 @@
 
 set -e
 
-PORT=${PORT:-8501}
+PORT=${PORT:-28501}
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -25,7 +25,7 @@ cd "$PROJECT_ROOT"
 echo "ReadMate Streamlit 앱 시작"
 echo "  포트          : $PORT"
 echo "  앱 주소       : http://localhost:$PORT"
-echo "  LLM 서버 주소 : ${LLM_SERVER_URL:-http://localhost:8000}"
+echo "  LLM 서버 주소 : ${LLM_SERVER_URL:-http://localhost:28765}"
 echo ""
 
 uv run streamlit run frontend/app.py --server.port "$PORT"

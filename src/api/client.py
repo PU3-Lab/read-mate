@@ -13,7 +13,7 @@ import websockets
 
 from api.schemas import LLMResponse, WSResponse
 
-DEFAULT_BASE_URL = 'http://localhost:8000'
+DEFAULT_BASE_URL = 'http://localhost:28765'
 
 
 class LLMClient:

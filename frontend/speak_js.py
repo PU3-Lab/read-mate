@@ -13,7 +13,7 @@ import os
 
 import streamlit as st
 
-_DEFAULT_SERVER = os.getenv('LLM_SERVER_URL', 'http://localhost:8000')
+_DEFAULT_SERVER = os.getenv('LLM_SERVER_URL', 'http://localhost:28765')
 
 
 def get_server_url() -> str:

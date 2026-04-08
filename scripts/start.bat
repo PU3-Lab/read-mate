@@ -8,8 +8,8 @@ REM   set LLM_ENGINE=openai && scripts\start.bat
 
 setlocal
 
-set SERVER_PORT=8000
-set APP_PORT=8501
+set SERVER_PORT=28765
+set APP_PORT=28501
 
 :parse_args
 if "%~1"=="--server-port" (
