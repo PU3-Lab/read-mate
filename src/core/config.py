@@ -56,6 +56,8 @@ ZONOS_MODEL: str = 'Zyphra/Zonos-v0.1-transformer'
 # 파이프라인 임계값
 # ─────────────────────────────────────────
 
+POPPLER_PATH: str = os.getenv('POPPLER_PATH', r'C:\Release-25.12.0-0\poppler-25.12.0\Library\bin')
+
 OCR_CONFIDENCE_THRESHOLD: float = 0.75  # 이 값 미만이면 폴백 검토
 PDF_MIN_CHARS: int = 100  # 이 값 미만이면 스캔형으로 판별
 LLM_MAX_RETRIES: int = 3

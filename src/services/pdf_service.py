@@ -2,13 +2,13 @@
 PDF 텍스트 추출 엔진 구현.
 
 텍스트형 PDF:
-  - pypdf로 텍스트 추출
-  - PyMuPDF(fitz)로 페이지 내 내장 이미지 추출 → 접근성 묘사 생성
-  - 텍스트와 이미지 설명을 페이지 내 순서대로 합치기
+  - PyMuPDF(fitz)로 텍스트 블록 추출
+  - find_tables()로 표를 JSON 구조로 추출 → 선형화 텍스트 변환
+  - 텍스트와 선형화된 표를 페이지 내 Y좌표 순서대로 합치기
 
 이미지형 PDF (스캔본):
   - pdf2image로 페이지 전체를 이미지로 변환
-  - Qwen2.5-VL 통합 프롬프트로 텍스트 + 이미지 묘사 한 번에 처리
+  - Qwen2.5-VL 통합 프롬프트로 텍스트 + 표 선형화 처리
 """
 
 import io
@@ -18,7 +18,8 @@ from typing import TYPE_CHECKING
 import fitz  # PyMuPDF
 import pypdf
 
-from models.schemas import ImageType, PDFResult
+from core.config import POPPLER_PATH
+from models.schemas import PDFResult
 from services.base import BasePDF
 
 if TYPE_CHECKING:
@@ -29,25 +30,27 @@ logger = logging.getLogger(__name__)
 _SCAN_THRESHOLD_TOTAL = 100
 _SCAN_THRESHOLD_PER_PAGE = 50
 
-# 스캔형 PDF 전용: 페이지 전체 통합 처리 프롬프트
-_PAGE_INTEGRATED_PROMPT = """당신은 시각장애인 학습자를 위한 교재 해설사입니다.
-이 페이지 이미지를 분석해서 다음 규칙에 따라 처리하세요.
+# 페이지 전체 통합 처리 프롬프트
+_PAGE_INTEGRATED_PROMPT = """이 페이지에 있는 모든 내용을 위에서 아래 순서대로 출력하세요.
 
-1. 텍스트가 있으면 그대로 추출
-2. 그림/이미지가 있으면 아래 중 해당하는 방식으로 설명:
-   - 표(행과 열 구조): 각 행을 "(열 제목): (내용)" 형태로 줄바꿈하며 선형화
-   - 해부도/경혈도/근육도: "그림 설명 시작." ~ "그림 설명 끝." 형식으로,
-     신체 기준 위치(자신의 왼쪽, 머리 방향 등)와 촉각 실습 안내 포함
-   - 일반 그림/사진: "그림 설명 시작." ~ "그림 설명 끝." 형식으로 장면 묘사
-3. 텍스트와 그림 설명은 페이지에 나타나는 순서대로 출력
-4. 괄호·특수기호 최소화 (화면낭독기 친화적)"""
+규칙 1 — 일반 텍스트: 제목, 본문, 캡션을 그대로 출력. 생략 금지.
+
+규칙 2 — 표: 아래 형식으로 각 행을 선형화. | 기호 절대 금지.
+출력 형식: (열 제목): (내용). (열 제목): (내용).
+예시 출력:
+경맥명: 수태음폐경. 경혈명: 중부. 부위: 빗장뼈 아래, 앞정중선에서 가쪽으로 6촌. 효능: 기침, 천식, 가슴 통증.
+경맥명: 수태음폐경. 경혈명: 척택. 부위: 팔오금주름 위, 위팔두갈래근힘줄의 가쪽. 효능: 목구멍 통증, 팔 통증.
+
+규칙 3 — 그림/이미지: 건너뛰세요. 설명하지 마세요.
+
+금지: 마크다운 헤더(#), 마크다운 테이블(|), 내용 생략"""
 
 
 class PyPDFEngine(BasePDF):
     """
     pypdf + PyMuPDF 기반 PDF 텍스트 추출 엔진.
-    텍스트형: 텍스트 추출 + 내장 이미지 접근성 묘사 (위치 순서 유지).
-    스캔형: 페이지 전체 이미지 → 통합 프롬프트로 Qwen2.5-VL 처리.
+    텍스트형: 텍스트 블록 + 표 선형화 (Y좌표 순서 유지).
+    스캔형: 페이지 전체 이미지 → Qwen2.5-VL OCR 처리.
     """
 
     def __init__(self, ocr_fallback: 'Qwen2VLEngine') -> None:
@@ -59,7 +62,7 @@ class PyPDFEngine(BasePDF):
 
     def extract(self, pdf_bytes: bytes) -> PDFResult:
         """
-        PDF 바이트를 받아 텍스트 + 이미지 묘사 추출.
+        PDF 바이트를 받아 텍스트 + 표 선형화 추출.
 
         Args:
             pdf_bytes: PDF 원본 바이트
@@ -75,15 +78,16 @@ class PyPDFEngine(BasePDF):
             raise RuntimeError(f'PDF 파싱 실패: {e}') from e
 
         pages_text = self._extract_text_pages(reader)
+        is_scanned = self._is_scanned(pages_text)
 
-        if self._is_scanned(pages_text):
-            logger.info('스캔형 PDF 감지 → 페이지 통합 OCR 처리')
+        if is_scanned:
+            logger.info('스캔형 PDF → 페이지 이미지 렌더링 후 OCR 처리')
             text = self._ocr_pdf_integrated(pdf_bytes)
-            return PDFResult(text=text, page_count=page_count, is_scanned=True)
+        else:
+            logger.info('텍스트형 PDF → pypdf 텍스트 추출')
+            text = self._extract_text(pdf_bytes, pages_text)
 
-        logger.info('텍스트형 PDF → 텍스트 + 내장 이미지 접근성 처리')
-        text = self._extract_text_with_images(pdf_bytes, pages_text)
-        return PDFResult(text=text, page_count=page_count, is_scanned=False)
+        return PDFResult(text=text, page_count=page_count, is_scanned=is_scanned)
 
     def _extract_text_pages(self, reader: pypdf.PdfReader) -> list[str]:
         """각 페이지에서 텍스트를 추출해 리스트로 반환."""
@@ -109,18 +113,19 @@ class PyPDFEngine(BasePDF):
         )
         return is_scan
 
-    def _extract_text_with_images(self, pdf_bytes: bytes, pages_text: list[str]) -> str:
+    def _extract_text(self, pdf_bytes: bytes, pages_text: list[str]) -> str:
         """
         텍스트형 PDF 처리.
-        PyMuPDF로 각 페이지의 내장 이미지를 추출하고,
-        텍스트 블록과 이미지 묘사를 페이지 내 Y좌표 순서로 합쳐서 반환.
+        PyMuPDF로 텍스트 블록 + find_tables()로 표를 추출.
+        표는 JSON 구조로 파싱 후 선형화 텍스트로 변환.
+        텍스트 블록과 선형화된 표를 Y좌표 순서로 합산.
 
         Args:
             pdf_bytes: PDF 원본 바이트
             pages_text: pypdf로 추출한 페이지별 텍스트 리스트
 
         Returns:
-            전체 페이지 텍스트 + 이미지 묘사 (순서 유지)
+            전체 페이지 텍스트 (표는 선형화됨)
         """
         doc = fitz.open(stream=pdf_bytes, filetype='pdf')
         all_pages: list[str] = []
@@ -128,50 +133,36 @@ class PyPDFEngine(BasePDF):
         for page_idx, page in enumerate(doc):
             page_blocks: list[tuple[float, str]] = []  # (y좌표, 텍스트)
 
-            # 텍스트 블록 수집 (Y좌표 포함)
+            # 표 추출 및 영역 수집
+            tables = page.find_tables()
+            table_rects: list[fitz.Rect] = []
+            for tab in tables:
+                table_rects.append(fitz.Rect(tab.bbox))
+                linearized = self._linearize_table(tab)
+                if linearized:
+                    y0 = tab.bbox[1]
+                    page_blocks.append((y0, linearized))
+                    logger.info(
+                        '페이지 %d 표 추출: %d행 x %d열',
+                        page_idx + 1, tab.row_count, tab.col_count,
+                    )
+
+            # 텍스트 블록 수집 (표 영역과 겹치는 블록은 제외)
             blocks = page.get_text('blocks')  # (x0, y0, x1, y1, text, block_no, block_type)
             for block in blocks:
                 block_text = block[4].strip()
-                if block_text:
-                    y0 = block[1]
-                    page_blocks.append((y0, block_text))
-
-            # 내장 이미지 수집
-            image_list = page.get_images(full=True)
-            for img_info in image_list:
-                xref = img_info[0]
-                try:
-                    img_bytes = self._extract_image_bytes(doc, xref)
-                    if img_bytes is None:
-                        continue
-
-                    # 이미지 Y좌표: 페이지 내 이미지 위치 파악
-                    y_pos = self._get_image_y_position(page, xref)
-
-                    # 접근성 묘사 생성
-                    ocr_result = self._ocr.recognize(img_bytes)
-                    if ocr_result.image_type == ImageType.TEXT:
-                        # 이미지 안이 텍스트만 있는 경우 그대로 사용
-                        description = ocr_result.raw_text
-                    else:
-                        description = ocr_result.alt_text or ocr_result.raw_text
-
-                    if description:
-                        page_blocks.append((y_pos, description))
-
-                    logger.info(
-                        '페이지 %d 이미지 처리: xref=%d, type=%s',
-                        page_idx + 1, xref, ocr_result.image_type.value,
-                    )
-                except Exception as e:
-                    logger.warning('페이지 %d 이미지 처리 실패 (xref=%d): %s', page_idx + 1, xref, e)
+                if not block_text:
+                    continue
+                block_rect = fitz.Rect(block[:4])
+                if any(block_rect.intersects(tr) for tr in table_rects):
+                    continue  # 표 영역 내부 텍스트는 건너뜀
+                page_blocks.append((block[1], block_text))
 
             # Y좌표 기준 정렬 후 텍스트 합치기
             page_blocks.sort(key=lambda x: x[0])
             page_text = '\n\n'.join(text for _, text in page_blocks)
 
             if not page_text.strip():
-                # PyMuPDF 블록 추출 실패 시 pypdf 결과로 폴백
                 page_text = pages_text[page_idx]
 
             all_pages.append(page_text)
@@ -180,38 +171,32 @@ class PyPDFEngine(BasePDF):
         doc.close()
         return '\n\n'.join(all_pages)
 
-    def _extract_image_bytes(self, doc: fitz.Document, xref: int) -> bytes | None:
+    @staticmethod
+    def _linearize_table(tab: fitz.table.Table) -> str:
         """
-        PyMuPDF xref로 이미지 바이트 추출.
-        PNG로 변환해서 반환. 실패 시 None.
-        """
-        try:
-            base_image = doc.extract_image(xref)
-            img_bytes = base_image['image']
-            img_ext = base_image['ext']
+        PyMuPDF 테이블을 시각장애인 친화 선형화 텍스트로 변환.
+        각 행을 '(열 제목): (내용)' 형태로 풀어서 서술.
 
-            # PNG가 아니면 PIL로 변환
-            if img_ext.lower() != 'png':
-                from PIL import Image
-                pil_img = Image.open(io.BytesIO(img_bytes)).convert('RGB')
-                buf = io.BytesIO()
-                pil_img.save(buf, format='PNG')
-                return buf.getvalue()
+        Args:
+            tab: PyMuPDF find_tables() 결과 테이블 객체
 
-            return img_bytes
-        except Exception as e:
-            logger.warning('이미지 바이트 추출 실패 (xref=%d): %s', xref, e)
-            return None
+        Returns:
+            선형화된 텍스트 (행마다 줄바꿈 구분)
+        """
+        headers = [
+            (c or '').replace('\n', ' ').strip() for c in tab.header.names
+        ]
+        rows = tab.extract()
+        # 첫 행이 헤더와 동일하면 건너뜀
+        data_start = 1 if rows and rows[0] == list(tab.header.names) else 0
 
-    def _get_image_y_position(self, page: fitz.Page, xref: int) -> float:
-        """
-        페이지 내 이미지의 Y좌표 반환.
-        이미지를 찾지 못하면 페이지 높이(맨 아래)로 폴백.
-        """
-        for item in page.get_image_info():
-            if item.get('xref') == xref:
-                return item['bbox'][1]  # y0
-        return page.rect.height  # 폴백: 페이지 맨 아래
+        lines: list[str] = []
+        for row in rows[data_start:]:
+            cells = [(c or '').replace('\n', ' ').strip() for c in row]
+            parts = [f'{h}: {v}' for h, v in zip(headers, cells) if v]
+            if parts:
+                lines.append('. '.join(parts) + '.')
+        return '\n'.join(lines)
 
     def _ocr_pdf_integrated(self, pdf_bytes: bytes) -> str:
         """
@@ -227,23 +212,24 @@ class PyPDFEngine(BasePDF):
             ) from e
 
         try:
-            images = convert_from_bytes(pdf_bytes, dpi=200)
+            images = convert_from_bytes(pdf_bytes, dpi=200, poppler_path=POPPLER_PATH or None)
         except Exception as e:
             raise RuntimeError(f'PDF 페이지 렌더링 실패: {e}') from e
 
-        texts: list[str] = []
+        parts: list[str] = []
         for i, pil_img in enumerate(images):
             try:
-                # 통합 프롬프트: 분류 없이 텍스트+이미지 한 번에 처리
+                # 페이지마다 개별 호출 — 토큰을 온전히 사용
                 page_text = self._ocr.recognize_pil(
-                    pil_img, _PAGE_INTEGRATED_PROMPT, max_new_tokens=2048
+                    pil_img, _PAGE_INTEGRATED_PROMPT, max_new_tokens=4096
                 )
-                texts.append(page_text)
-                logger.info('스캔형 페이지 %d 처리 완료: 길이=%d', i + 1, len(page_text))
+                logger.info('페이지 %d 처리 완료: 길이=%d', i + 1, len(page_text))
             except Exception as e:
                 logger.warning('페이지 %d 처리 실패: %s', i + 1, e)
-                texts.append('')
+                page_text = ''
 
-        result = '\n\n'.join(texts)
-        logger.info('스캔형 PDF 완료: pages=%d, total_length=%d', len(images), len(result))
+            parts.append(f'--- 페이지 {i + 1} ---\n\n{page_text}')
+
+        result = '\n\n'.join(parts)
+        logger.info('PDF 완료: pages=%d, total_length=%d', len(images), len(result))
         return result

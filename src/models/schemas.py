@@ -32,13 +32,6 @@ class PipelineStatus(Enum):
     FAILED = 'failed'
 
 
-class ImageType(Enum):
-    TEXT = 'text'       # 일반 텍스트/OCR (기존 경로)
-    TABLE = 'table'     # 표
-    ANATOMY = 'anatomy' # 해부도/경혈도
-    PHOTO = 'photo'     # 일반 사진
-
-
 # ─────────────────────────────────────────
 # 입력
 # ─────────────────────────────────────────
@@ -78,8 +71,6 @@ class OCRResult:
     engine: str
     avg_confidence: float
     raw_text: str
-    image_type: ImageType = ImageType.TEXT  # 이미지 유형 (접근성 처리용)
-    alt_text: str | None = None             # 접근성 묘사 텍스트 (표/해부도/사진)
 
 
 # ─────────────────────────────────────────

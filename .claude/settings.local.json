@@ -6,7 +6,11 @@
       "READFILE",
       "WebFetch(domain:www.paddlepaddle.org.cn)",
       "WebFetch(domain:github.com)",
-      "WebFetch(domain:pypi.org)"
+      "WebFetch(domain:pypi.org)",
+      "WebSearch",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:medium.com)",
+      "WebFetch(domain:docs.aihub.gg)"
     ]
   },
   "enabledPlugins": {
