@@ -8,8 +8,8 @@
 #   ./scripts/start.sh --dev --server-port 8080 --app-port 8502
 #   LLM_ENGINE=openai ./scripts/start.sh
 
-SERVER_PORT=${SERVER_PORT:-8000}
-APP_PORT=${APP_PORT:-8501}
+SERVER_PORT=${SERVER_PORT:-28765}
+APP_PORT=${APP_PORT:-28501}
 DEV_FLAG=""
 
 while [[ $# -gt 0 ]]; do

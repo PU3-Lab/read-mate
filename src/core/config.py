@@ -57,7 +57,7 @@ def is_dev_mode() -> bool:
     return os.getenv('APP_ENV', 'prod') == 'dev'
 
 LLM_ENGINE: str = os.getenv('LLM_ENGINE', 'gemma')  # gemma | qwen | openai
-LLM_SERVER_URL: str = os.getenv('LLM_SERVER_URL', 'http://localhost:8000')
+LLM_SERVER_URL: str = os.getenv('LLM_SERVER_URL', 'http://localhost:28765')
 LLM_MODEL_DEFAULT: str = 'google/gemma-4-E4B-it'
 LLM_MODEL_LARGE: str = 'google/gemma-4-26B-A4B-it'
 LLM_MODEL_API: str = 'gpt-4.1-mini'

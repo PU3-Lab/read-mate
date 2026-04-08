@@ -10,7 +10,7 @@
 
 set -e
 
-PORT=${PORT:-8000}
+PORT=${PORT:-28765}
 DEV_FLAG=""
 
 # 인자 파싱

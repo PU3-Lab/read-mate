@@ -8,7 +8,7 @@ REM   set LLM_SERVER_URL=http://localhost:9000 && scripts\start_app.bat
 
 setlocal
 
-set PORT=8501
+set PORT=28501
 
 :parse_args
 if "%~1"=="--port" (
@@ -29,7 +29,7 @@ echo   앱 주소       : http://localhost:%PORT%
 if defined LLM_SERVER_URL (
     echo   LLM 서버 주소 : %LLM_SERVER_URL%
 ) else (
-    echo   LLM 서버 주소 : http://localhost:8000
+    echo   LLM 서버 주소 : http://localhost:28765
 )
 echo.
 

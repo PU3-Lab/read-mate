@@ -2,7 +2,7 @@ import os
 
 import requests
 import streamlit as st
-from speak_js import get_server_url, make_speak_fn
+from speak_js import get_announcement_token, get_server_url, make_speak_fn
 
 _A11Y_TEMPLATE = """
 <script>
@@ -10,7 +10,8 @@ _A11Y_TEMPLATE = """
 __SPEAK_FN__
 
   function init(){
-    speak(
+    speakOnce(
+      `voice-settings:__INTRO_TOKEN__`,
       '내 목소리 설정입니다. 화자 이름을 입력하고, 오디오 파일을 업로드한 뒤 등록 버튼을 눌러주세요.',
       ()=>{
         const inp=window.parent.document.querySelector('input[type="text"]');
@@ -115,7 +116,13 @@ def _load_voice_map() -> dict[str, str]:
 
 
 def _a11y_js() -> str:
-    return _A11Y_TEMPLATE.replace('__SPEAK_FN__', make_speak_fn())
+    intro_token = get_announcement_token('voice:settings')
+    return (
+        _A11Y_TEMPLATE.replace('__SPEAK_FN__', make_speak_fn()).replace(
+            '__INTRO_TOKEN__',
+            str(intro_token),
+        )
+    )
 
 
 def render() -> None:

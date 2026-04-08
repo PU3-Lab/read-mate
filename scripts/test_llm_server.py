@@ -2,7 +2,7 @@
 ReadMate LLM 서버 테스트 스크립트.
 
 사전 조건:
-    서버 실행: uv run uvicorn backend.main:app --reload --port 8000
+    서버 실행: uv run uvicorn backend.main:app --reload --port 28765
 
 사용법:
     # HTTP 요약 테스트
@@ -15,7 +15,7 @@ ReadMate LLM 서버 테스트 스크립트.
     uv run python scripts/test_llm_server.py --mode ws
 
     # 커스텀 서버 주소
-    uv run python scripts/test_llm_server.py --mode http-summarize --host localhost --port 8000
+    uv run python scripts/test_llm_server.py --mode http-summarize --host localhost --port 28765
 """
 
 from __future__ import annotations
@@ -43,7 +43,7 @@ def test_http_summarize(base_url: str) -> None:
     HTTP POST /api/summarize 엔드포인트를 테스트한다.
 
     Args:
-        base_url: 서버 기본 URL (예: http://localhost:8000)
+        base_url: 서버 기본 URL (예: http://localhost:28765)
     """
     url = f'{base_url}/api/summarize'
     payload = json.dumps({'text': SAMPLE_TEXT}).encode()
@@ -80,7 +80,7 @@ async def test_ws(ws_url: str) -> None:
     WebSocket /ws/chat 엔드포인트를 대화형으로 테스트한다.
 
     Args:
-        ws_url: WebSocket 서버 URL (예: ws://localhost:8000)
+        ws_url: WebSocket 서버 URL (예: ws://localhost:28765)
     """
     try:
         import websockets
@@ -152,7 +152,7 @@ def main() -> None:
         default='http-summarize',
     )
     parser.add_argument('--host', default='localhost')
-    parser.add_argument('--port', type=int, default=8000)
+    parser.add_argument('--port', type=int, default=28765)
     args = parser.parse_args()
 
     base_url = f'http://{args.host}:{args.port}'

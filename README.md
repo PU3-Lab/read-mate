@@ -40,7 +40,7 @@ Windows:
 scripts\start_server.bat
 ```
 
-기본 주소는 `http://localhost:8000` 입니다.
+기본 주소는 `http://localhost:28765` 입니다.
 
 Windows 보안 정책 때문에 프로젝트 내부 `.venv` 실행이 차단되면 스크립트가 `%LOCALAPPDATA%\ReadMate\.venv` 를 자동으로 생성해 사용합니다. 다른 허용 경로를 쓰려면 `READMATE_VENV` 환경변수로 지정할 수 있습니다.
 
@@ -56,7 +56,7 @@ Windows:
 scripts\start_app.bat
 ```
 
-기본 주소는 `http://localhost:8501` 입니다.
+기본 주소는 `http://localhost:28501` 입니다.
 
 ## 환경 변수
 
@@ -69,7 +69,7 @@ scripts\start_app.bat
 
 ```bash
 LLM_ENGINE=openai ./scripts/start_server.sh
-LLM_SERVER_URL=http://localhost:8000 ./scripts/start_app.sh
+LLM_SERVER_URL=http://localhost:28765 ./scripts/start_app.sh
 ```
 
 ## 테스트

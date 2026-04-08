@@ -10,7 +10,7 @@ from job_runner import (
     submit_analysis_job,
 )
 from PIL import Image as PILImage
-from speak_js import make_speak_fn
+from speak_js import get_announcement_token, make_speak_fn
 
 from pipelines import analyze_content
 
@@ -50,7 +50,8 @@ __SPEAK_FN__
   }
 
   setTimeout(()=>{
-    speak(
+    speakOnce(
+      `material-mode:__INTRO_TOKEN__`,
       '강의 자료 분석입니다. 1번, 파일 업로드. 2번, 카메라 촬영. 숫자키 1 또는 2를 눌러 선택하세요. 백스페이스 를 누르면 홈으로 돌아갑니다.'
     );
   }, 500);
@@ -190,7 +191,8 @@ __SPEAK_FN__
   }
 
   setTimeout(()=>{
-    speak(
+    speakOnce(
+      `material-upload:__INTRO_TOKEN__`,
       '파일 업로드 모드입니다. 탭 키를 눌러 파일 선택 버튼으로 이동하세요. 백스페이스 를 누르면 모드 선택으로 돌아갑니다.'
     );
   }, 400);
@@ -310,7 +312,7 @@ canvas{display:none;}
 
 __SPEAK_FN__
 
-  speak('카메라를 불러오는 중입니다. 잠시 기다려주세요.', async ()=>{
+  speakOnce(`material-camera:__INTRO_TOKEN__`, '카메라를 불러오는 중입니다. 잠시 기다려주세요.', async ()=>{
     try{
       const stream = await navigator.mediaDevices.getUserMedia({
         video:{ facingMode:'user', width:{ideal:1280}, height:{ideal:720} }
@@ -423,23 +425,42 @@ window.addEventListener('message', function(e){
 
 
 def _intro_js() -> str:
-    return _INTRO_TEMPLATE.replace('__SPEAK_FN__', make_speak_fn())
+    intro_token = get_announcement_token('material:mode')
+    return (
+        _INTRO_TEMPLATE.replace('__SPEAK_FN__', make_speak_fn()).replace(
+            '__INTRO_TOKEN__',
+            str(intro_token),
+        )
+    )
 
 
 def _upload_js() -> str:
-    return _UPLOAD_TEMPLATE.replace('__SPEAK_FN__', make_speak_fn())
+    intro_token = get_announcement_token('material:upload')
+    return (
+        _UPLOAD_TEMPLATE.replace('__SPEAK_FN__', make_speak_fn()).replace(
+            '__INTRO_TOKEN__',
+            str(intro_token),
+        )
+    )
 
 
 def _camera_html() -> str:
-    return _CAMERA_TEMPLATE.replace('__SPEAK_FN__', make_speak_fn())
+    intro_token = get_announcement_token('material:camera')
+    return (
+        _CAMERA_TEMPLATE.replace('__SPEAK_FN__', make_speak_fn()).replace(
+            '__INTRO_TOKEN__',
+            str(intro_token),
+        )
+    )
 
 
 def _camera_result_js() -> str:
+    intro_token = get_announcement_token('material:camera-result')
     return f"""
 <script>
 (function(){{
   {make_speak_fn()}
-  setTimeout(()=>speak('촬영된 이미지입니다. 엔터로 분석을 시작하거나 R키 로 다시 촬영하세요.'),400);
+  setTimeout(()=>speakOnce('material-camera-result:{intro_token}','촬영된 이미지입니다. 엔터로 분석을 시작하거나 R키 로 다시 촬영하세요.'),400);
   function onKey(e){{
     const tag=e.target.tagName;
     if(tag==='INPUT'||tag==='TEXTAREA')return;
@@ -720,6 +741,7 @@ def _run(file_name: str, content: bytes) -> bool:
     st.session_state.summary_play_key = ''
     st.session_state.summary_play_token = 0
     st.session_state.qa_new_answer = False
+    st.session_state.qa_answer_play_token = 0
     return True
 
 
@@ -752,6 +774,7 @@ def _queue_processing(file_name: str, content: bytes) -> None:
     st.session_state.summary_play_key = ''
     st.session_state.summary_play_token = 0
     st.session_state.qa_new_answer = False
+    st.session_state.qa_answer_play_token = 0
 
 
 # ── 진행 메시지별 TTS 문구 매핑 ─────────────────────────
@@ -804,10 +827,10 @@ def _render_processing_status(job_id: str):
   }}
 
   // 단계 변경 시 즉시 1회 재생
-  {'speak("' + safe_msg + '");' if step_changed else ''}
+  {'speak("' + safe_msg + '", null, {priority:"high"});' if step_changed else ''}
 
   // 8초마다 반복 재생
-  window._rmTtsInterval = setInterval(() => speak('{safe_msg}'), 8000);
+  window._rmTtsInterval = setInterval(() => speak('{safe_msg}', null, {{priority:'high'}}), 8000);
 }})();
 </script>
 """,
@@ -895,6 +918,7 @@ def _render_processing_status(job_id: str):
         st.session_state.processing_message = ''
         st.session_state.summary_play_key = ''
         st.session_state.summary_play_token = 0
+        st.session_state.qa_answer_play_token = 0
         st.rerun()
 
 
@@ -928,6 +952,7 @@ def _reset():
         'processing_message',
         'summary_play_key',
         'summary_play_token',
+        'qa_answer_play_token',
     ]:
         st.session_state[k] = (
             None
@@ -951,6 +976,6 @@ def _reset():
             else 'summary'
             if k == 'active_panel'
             else 0
-            if k == 'summary_play_token'
+            if k in ('summary_play_token', 'qa_answer_play_token')
             else ''
         )
