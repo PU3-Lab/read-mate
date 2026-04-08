@@ -2,10 +2,12 @@
 ReadMate LLM 서버 진입점.
 
 실행:
-    uv run uvicorn backend.main:app --reload --port 8000
+    uv run python -m backend.main          # prod (기본)
+    uv run python -m backend.main --dev    # dev (Edge TTS 사용)
 
 환경변수:
     LLM_ENGINE  gemma (기본) | qwen | openai
+    APP_ENV     prod (기본) | dev
 """
 
 from __future__ import annotations
@@ -67,3 +69,23 @@ app.include_router(ws_routes.router)
 def health() -> dict[str, str]:
     """서버 상태 확인."""
     return {'status': 'ok'}
+
+
+if __name__ == '__main__':
+    import argparse
+    import os
+
+    import uvicorn
+
+    parser = argparse.ArgumentParser(description='ReadMate 서버 실행')
+    parser.add_argument('--dev', action='store_true', help='dev 모드 (Edge TTS 사용)')
+    parser.add_argument('--port', type=int, default=8000, help='서버 포트 (기본: 8000)')
+    args = parser.parse_args()
+
+    if args.dev:
+        os.environ['APP_ENV'] = 'dev'
+        logger.info('[startup] dev 모드로 실행합니다 (TTS: Edge TTS)')
+    else:
+        logger.info('[startup] prod 모드로 실행합니다')
+
+    uvicorn.run('backend.main:app', host='0.0.0.0', port=args.port, reload=True)

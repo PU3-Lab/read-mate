@@ -6,6 +6,7 @@ POST /api/tts/speak       — ElevenLabs TTS 음성 합성 (접근성 낭독용)
 
 from __future__ import annotations
 
+import asyncio
 import io
 import logging
 import uuid
@@ -16,9 +17,11 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from core.config import ELEVENLABS_API_KEY, TMP_DIR
+from core.config import DEV_MODE, ELEVENLABS_API_KEY, TMP_DIR
 from core.exceptions import TTSGenerationError
 from services.static_tts_cache import StaticTTSAudioCache
+from services.tts_edge import DEFAULT_VOICE as EDGE_DEFAULT_VOICE
+from services.tts_edge import EdgeTTSEngine
 from services.tts_elevenlabs import ElevenLabsTTS
 
 logger = logging.getLogger(__name__)
@@ -138,7 +141,7 @@ async def speak_text(req: SpeakRequest) -> StreamingResponse:
         HTTPException 400: API 키 미설정
         HTTPException 500: TTS 합성 실패
     """
-    if not ELEVENLABS_API_KEY:
+    if not DEV_MODE and not ELEVENLABS_API_KEY:
         raise HTTPException(status_code=400, detail='ELEVENLABS_API_KEY가 설정되어 있지 않습니다.')
 
     try:
@@ -168,8 +171,15 @@ async def speak_text(req: SpeakRequest) -> StreamingResponse:
                 detail='이 텍스트는 정적 TTS가 존재하지 않으며, 동적 생성(allow_generation)이 허용되지 않았습니다.'
             )
 
-        tts = ElevenLabsTTS(api_key=ELEVENLABS_API_KEY)
-        result = tts.synthesize(req.text, req.voice_name)
+        if DEV_MODE:
+            tts_engine = EdgeTTSEngine()
+            result = await tts_engine.synthesize(req.text, EDGE_DEFAULT_VOICE)
+            tts_source = 'edge'
+        else:
+            tts_engine = ElevenLabsTTS(api_key=ELEVENLABS_API_KEY)
+            result = tts_engine.synthesize(req.text, req.voice_name)
+            tts_source = 'elevenlabs'
+
         audio_path = Path(result.audio_path)
         audio_bytes = audio_path.read_bytes()
         audio_path.unlink(missing_ok=True)
@@ -183,5 +193,5 @@ async def speak_text(req: SpeakRequest) -> StreamingResponse:
     return StreamingResponse(
         io.BytesIO(audio_bytes),
         media_type='audio/mpeg',
-        headers={'X-ReadMate-TTS-Source': 'elevenlabs'},
+        headers={'X-ReadMate-TTS-Source': tts_source},
     )
