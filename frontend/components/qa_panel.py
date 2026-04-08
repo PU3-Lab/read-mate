@@ -1,7 +1,12 @@
+import json
+import logging
+
 import streamlit as st
-from speak_js import make_speak_fn
+from speak_js import get_announcement_token, make_speak_fn
 
 from pipelines import answer_question
+
+logger = logging.getLogger(__name__)
 
 _QA_HTML = """
 <style>
@@ -159,8 +164,9 @@ body{background:transparent;font-family:'Gowun Dodum',sans-serif;}
   document.addEventListener('keydown',onKey);
   try{window.parent.document.addEventListener('keydown',onKey);}catch(err){}
 
-  setTimeout(()=>speak(
-    '질의응답 화면입니다. 스페이스키 를 눌러 질문을 하고, 다시 스페이크키 로 중지한 뒤 엔터키 로 전송하세요. 백스페이스 를 누르면 요약화면 으로 돌아갑니다.'
+  setTimeout(()=>speakOnce(
+    `qa-intro:__INTRO_TOKEN__`,
+    '질의응답 화면입니다. 스페이스키 를 눌러 질문을 하고, 다시 스페이스키 로 중지한 뒤 엔터키 로 전송하세요. 백스페이스 를 누르면 요약화면 으로 돌아갑니다.'
   ),400);
 })();
 </script>
@@ -195,6 +201,7 @@ _QA_DOM_BRIDGE_HTML = """
 
 def render_qa_panel():
     """질의응답 패널을 렌더링한다."""
+    intro_token = get_announcement_token('result:qa')
     if 'qa_text' not in st.session_state:
         st.session_state.qa_text = ''
     if st.session_state.get('qa_clear_text'):
@@ -211,30 +218,24 @@ def render_qa_panel():
     )
 
     history = st.session_state.get('qa_history', [])
+    latest_answer = history[-1]['a'] if history else ''
+    answer_token = int(st.session_state.get('qa_answer_play_token', 0))
     for item in history:
         st.markdown(
             f'<div class="qa-user">🙋 {item["q"]}</div>', unsafe_allow_html=True
         )
         st.markdown(f'<div class="qa-ai">🤖 {item["a"]}</div>', unsafe_allow_html=True)
 
-    if history and st.session_state.get('qa_new_answer'):
-        ans = history[-1]['a'].replace("'", "\\'").replace('\n', ' ')
-        st.iframe(
-            f"""
-<script>
-(function(){{
-  {make_speak_fn(allow_generation=True)}
-  setTimeout(()=>speak('{ans}',()=>{{
-    setTimeout(()=>speak('다시 질문하려면 스페이스, 요약으로 돌아가려면 백스페이스 를 눌러주세요.'),300);
-  }}),300);
-}})();
-</script>
-""",
-            height=1,
-        )
-        st.session_state.qa_new_answer = False
+    if latest_answer and st.session_state.get('qa_new_answer'):
+        _speak_answer(latest_answer, answer_token)
+        # 여기서 즉시 False로 바꾸면 Streamlit이 리런하면서 iframe이 제거될 수 있음.
+        # 다음 질문 시작 시점(_ask)에서 리셋하도록 변경함.
 
-    st.iframe(_QA_HTML.replace('__SPEAK_FN__', make_speak_fn()), height=180)
+    qa_html = (
+        _QA_HTML.replace('__SPEAK_FN__', make_speak_fn(allow_generation=True))
+        .replace('__INTRO_TOKEN__', str(intro_token))
+    )
+    st.components.v1.html(qa_html, height=180)
 
     question = st.text_area(
         'qa_text',
@@ -258,6 +259,9 @@ def render_qa_panel():
         st.markdown('<div class="btn-sec">', unsafe_allow_html=True)
         if st.button('←   요약', width='stretch', key='qa_back'):
             st.session_state.active_panel = 'summary'
+            st.session_state.summary_play_token = (
+                int(st.session_state.get('summary_play_token', 0)) + 1
+            )
             st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
     with c4:
@@ -268,8 +272,49 @@ def render_qa_panel():
         st.markdown('</div>', unsafe_allow_html=True)
 
 
+def _speak_answer(answer: str, token: int) -> None:
+    """새 답변을 TTS로 재생한다."""
+    logger.info(f'[QA-Speak] 재생 호출됨 - Token: {token}')
+
+    # 답변 재생은 최상위 우선순위(summary)로 설정
+    speak_fn = make_speak_fn(allow_generation=True, priority='summary')
+    answer_js = json.dumps(answer, ensure_ascii=False)
+    hint_js = json.dumps('다시 질문하려면 스페이스, 요약으로 돌아가려면 백스페이스 를 눌러주세요.')
+
+    # 고유 key를 부여하여 Streamlit이 매번 새로운 컴포넌트로 인식하게 함
+    st.components.v1.html(
+        f"""
+<script>
+(function(){{
+  const owner = window.parent || window;
+  owner.console.log('[QA-Answer-Component] JS 진입 성공 - Token:', {token});
+
+  {speak_fn}
+
+  // 이미 재생한 토큰인지 확인 (중복 재생 방지)
+  if (owner.__rmLastPlayedToken === {token}) {{
+    owner.console.log('[QA-Answer-Component] 중복 재생 방지됨 - Token:', {token});
+    return;
+  }}
+
+  setTimeout(() => {{
+    owner.console.log('[QA-Answer-Component] speak() 함수 호출');
+    speak({answer_js}, () => {{
+      owner.__rmLastPlayedToken = {token};
+      owner.console.log('[QA-Answer-Component] 답변 재생 끝, 힌트 시작');
+      setTimeout(() => speak({hint_js}), 300);
+    }});
+  }}, 200);
+}})();
+</script>
+""",
+        height=1,
+    )
+
+
 def _ask(question: str):
     """질문을 전송해 답변을 세션 히스토리에 추가한다."""
+    st.session_state.qa_new_answer = False
     with st.spinner('답변 생성 중...'):
         try:
             answer = answer_question(
@@ -280,5 +325,8 @@ def _ask(question: str):
             answer = f'오류: {exc}'
     st.session_state.qa_history.append({'q': question, 'a': answer})
     st.session_state.qa_new_answer = True
+    st.session_state.qa_answer_play_token = (
+        int(st.session_state.get('qa_answer_play_token', 0)) + 1
+    )
     st.session_state.qa_clear_text = True
     st.rerun()

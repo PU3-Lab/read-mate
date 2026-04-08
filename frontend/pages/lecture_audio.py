@@ -5,7 +5,7 @@ from job_runner import (
     get_analysis_job_result,
     submit_analysis_job,
 )
-from speak_js import make_speak_fn
+from speak_js import get_announcement_token, make_speak_fn
 
 from pipelines import analyze_content
 
@@ -16,7 +16,8 @@ __SPEAK_FN__
 
   // 진입 안내 → 업로드 버튼 포커스
   function init(){
-    speak(
+    speakOnce(
+      `audio-intro:__INTRO_TOKEN__`,
       '강의 녹음 분석입니다. 탭 키를 눌러 파일 업로드 버튼으로 이동하세요. 파일을 선택하면 안내해드립니다.',
       ()=>{
         const btn=window.parent.document.querySelector('[data-testid="stFileUploaderDropzoneInput"]');
@@ -80,7 +81,13 @@ __SPEAK_FN__
 
 
 def _a11y_js() -> str:
-    return _A11Y_TEMPLATE.replace('__SPEAK_FN__', make_speak_fn())
+    intro_token = get_announcement_token('audio:upload')
+    return (
+        _A11Y_TEMPLATE.replace('__SPEAK_FN__', make_speak_fn()).replace(
+            '__INTRO_TOKEN__',
+            str(intro_token),
+        )
+    )
 
 
 def render() -> None:
@@ -173,6 +180,7 @@ def _run(file_name: str, audio_bytes: bytes) -> bool:
     st.session_state.summary_play_key = ''
     st.session_state.summary_play_token = 0
     st.session_state.qa_new_answer = False
+    st.session_state.qa_answer_play_token = 0
     return True
 
 
@@ -205,6 +213,7 @@ def _queue_processing(file_name: str, audio_bytes: bytes) -> None:
     st.session_state.summary_play_key = ''
     st.session_state.summary_play_token = 0
     st.session_state.qa_new_answer = False
+    st.session_state.qa_answer_play_token = 0
 
 
 _PROGRESS_TTS: dict[str, str] = {
@@ -251,9 +260,9 @@ def _render_processing_status(job_id: str):
     window._rmTtsInterval = null;
   }}
 
-  {'speak("' + safe_msg + '");' if step_changed else ''}
+  {'speak("' + safe_msg + '", null, {priority:"high"});' if step_changed else ''}
 
-  window._rmTtsInterval = setInterval(() => speak('{safe_msg}'), 8000);
+  window._rmTtsInterval = setInterval(() => speak('{safe_msg}', null, {{priority:'high'}}), 8000);
 }})();
 </script>
 """,
@@ -312,6 +321,7 @@ def _render_processing_status(job_id: str):
         st.session_state.processing_message = ''
         st.session_state.summary_play_key = ''
         st.session_state.summary_play_token = 0
+        st.session_state.qa_answer_play_token = 0
         st.rerun()
 
 
@@ -345,6 +355,7 @@ def _reset():
         'processing_message',
         'summary_play_key',
         'summary_play_token',
+        'qa_answer_play_token',
     ]:
         st.session_state[k] = (
             None
@@ -368,6 +379,6 @@ def _reset():
             else 'summary'
             if k == 'active_panel'
             else 0
-            if k == 'summary_play_token'
+            if k in ('summary_play_token', 'qa_answer_play_token')
             else ''
         )
