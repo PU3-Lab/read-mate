@@ -116,9 +116,10 @@ __SPEAK_FN__
       });
     });
 
-    // 2. Buttons
+    // 2. Buttons (탭 순서에서 제외하여 카드만 선택되게 함)
     window.parent.document.querySelectorAll('button').forEach(b=>{
       if(b._rmA)return; b._rmA=true;
+      b.setAttribute('tabindex', '-1');
       b.addEventListener('focus',()=>{
         const t=b.innerText.trim();
         if(t.includes('1번')) speak('첫번째 버튼, 강의 녹음 분석입니다. 엔터를 누르면 시작합니다.');
@@ -137,10 +138,11 @@ __SPEAK_FN__
     // 포커스 가능한 모든 요소 (Streamlit 내부)
     const focusables = Array.from(doc.querySelectorAll('button, [tabindex="0"], input, textarea, select, a, [contenteditable="true"]'))
       .filter(el => {
-        // 보이지 않는 요소 제외
+        // 보이지 않는 요소 제외 및 탭 순서 확인
+        if (el.getAttribute('tabindex') === '-1') return false;
         if (el.offsetWidth <= 0 && el.offsetHeight <= 0) return false;
-        if (window.parent.getComputedStyle(el).display === 'none') return false;
-        if (window.parent.getComputedStyle(el).visibility === 'hidden') return false;
+        const style = window.parent.getComputedStyle(el);
+        if (style.display === 'none' || style.visibility === 'hidden') return false;
         return true;
       });
     

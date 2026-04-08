@@ -27,10 +27,11 @@ __SPEAK_FN__
   setTimeout(init, 500);
 
   function attachFocus(){
-    // 1. Buttons
+    // 1. Buttons (탭 순서에서 제외)
     window.parent.document.querySelectorAll('button').forEach(b=>{
       if(b._rmAttached) return;
       b._rmAttached=true;
+      b.setAttribute('tabindex', '-1');
       b.addEventListener('focus',()=>{
         const t=b.innerText.trim();
         if(t.includes('분석 시작')) speak('분석 시작 버튼입니다. 엔터를 눌러주세요.');
@@ -55,8 +56,10 @@ __SPEAK_FN__
     const doc = window.parent.document;
     const focusables = Array.from(doc.querySelectorAll('button, [tabindex="0"], input, textarea, select, a'))
       .filter(el => {
+        if (el.getAttribute('tabindex') === '-1') return false;
         if (el.offsetWidth <= 0 && el.offsetHeight <= 0) return false;
-        if (window.parent.getComputedStyle(el).display === 'none') return false;
+        const style = window.parent.getComputedStyle(el);
+        if (style.display === 'none' || style.visibility === 'hidden') return false;
         return true;
       });
     if (focusables.length === 0) return;
