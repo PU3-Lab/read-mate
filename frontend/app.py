@@ -91,7 +91,26 @@ _HOME_A11Y_TEMPLATE = """
   let active=false;
 __SPEAK_FN__
 
+  function disableOwnFrame(){
+    try{
+      if(!window.frameElement) return;
+      window.frameElement.setAttribute('tabindex', '-1');
+      window.frameElement.setAttribute('aria-hidden', 'true');
+    }catch(err){}
+  }
+
+  function getFeatureCards(){
+    return Array.from(window.parent.document.querySelectorAll('.feature-card'))
+      .filter(card=>{
+        const style = window.parent.getComputedStyle(card);
+        if (style.display === 'none' || style.visibility === 'hidden') return false;
+        return card.offsetWidth > 0 || card.offsetHeight > 0;
+      });
+  }
+
   function attachFocus(){
+    disableOwnFrame();
+
     // 1. Feature Cards
     window.parent.document.querySelectorAll('.feature-card').forEach(c=>{
       if(c._rmA)return; c._rmA=true;
@@ -133,58 +152,55 @@ __SPEAK_FN__
   // Focus Trapping (Streamlit UI 안에서만 이동)
   function handleTab(e) {
     if (e.key !== 'Tab') return;
-    const doc = window.parent.document;
-    
-    // 포커스 가능한 모든 요소 (Streamlit 내부)
-    const focusables = Array.from(doc.querySelectorAll('button, [tabindex="0"], input, textarea, select, a, [contenteditable="true"]'))
-      .filter(el => {
-        // 보이지 않는 요소 제외 및 탭 순서 확인
-        if (el.getAttribute('tabindex') === '-1') return false;
-        if (el.offsetWidth <= 0 && el.offsetHeight <= 0) return false;
-        const style = window.parent.getComputedStyle(el);
-        if (style.display === 'none' || style.visibility === 'hidden') return false;
-        return true;
-      });
-    
-    if (focusables.length === 0) return;
-    
-    const first = focusables[0];
-    const last = focusables[focusables.length - 1];
-    const active = doc.activeElement;
-    
-    if (e.shiftKey) {
-      // Shift + Tab: 첫 번째 요소에서 마지막으로 이동
-      if (active === first || !focusables.includes(active)) {
-        last.focus();
-        e.preventDefault();
-      }
-    } else {
-      // Tab: 마지막 요소에서 첫 번째로 이동
-      if (active === last || !focusables.includes(active)) {
-        first.focus();
-        e.preventDefault();
-      }
+    const cards = getFeatureCards();
+    if (cards.length === 0) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    const activeEl = window.parent.document.activeElement;
+    const currentIndex = cards.indexOf(activeEl);
+    if (currentIndex === -1) {
+      (e.shiftKey ? cards[cards.length - 1] : cards[0]).focus();
+      return;
     }
+
+    const nextIndex = e.shiftKey
+      ? (currentIndex - 1 + cards.length) % cards.length
+      : (currentIndex + 1) % cards.length;
+    cards[nextIndex].focus();
+  }
+
+  function bindTabHandler(){
+    try{
+      if(window.parent._rmTabHandler){
+        window.parent.document.removeEventListener('keydown', window.parent._rmTabHandler);
+      }
+      window.parent._rmTabHandler = handleTab;
+      window.parent.document.addEventListener('keydown', window.parent._rmTabHandler);
+    }catch(err){}
+
+    document.removeEventListener('keydown', handleTab);
+    document.addEventListener('keydown', handleTab);
   }
 
   const obs=new MutationObserver(attachFocus);
   obs.observe(window.parent.document.body,{childList:true,subtree:true});
-  setTimeout(attachFocus,800);
+  attachFocus();
+  bindTabHandler();
+  setTimeout(attachFocus,150);
 
   function activate(){
     if(active)return; active=true;
     document.getElementById('wake').style.display='none';
     document.getElementById('hint').style.display='block';
-    
-    if (!window.parent._rmTabHandler) {
-      window.parent._rmTabHandler = handleTab;
-      window.parent.document.addEventListener('keydown', window.parent._rmTabHandler);
-    }
+
+    bindTabHandler();
 
     speak(
       '리드메이트입니다. 소리로 읽는 강의자료, 배움의 끝이 없도록 우리 함께 공부해요. 탭키를 눌러 버튼으로 이동하세요. 첫번째 버튼은 강의 녹음 분석, 두번째 버튼은 강의 자료 분석, 세번째 버튼은 내 목소리 설정입니다. 엔터 를 눌러 선택하세요.',
       ()=>{
-        const cards=window.parent.document.querySelectorAll('.feature-card');
+        const cards=getFeatureCards();
         if(cards.length > 0) cards[0].focus();
       }
     );

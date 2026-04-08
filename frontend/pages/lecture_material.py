@@ -19,6 +19,36 @@ _INTRO_TEMPLATE = """
 (function(){
 __SPEAK_FN__
 
+  function disableOwnFrame(){
+    try{
+      if(!window.frameElement) return;
+      window.frameElement.setAttribute('tabindex', '-1');
+      window.frameElement.setAttribute('aria-hidden', 'true');
+    }catch(err){}
+  }
+
+  function disablePassiveIframes(){
+    window.parent.document.querySelectorAll('iframe').forEach(frame=>{
+      const rect = frame.getBoundingClientRect();
+      const height =
+        rect.height ||
+        frame.clientHeight ||
+        Number(frame.getAttribute('height') || 0);
+      if (height > 4) return;
+      frame.setAttribute('tabindex', '-1');
+      frame.setAttribute('aria-hidden', 'true');
+    });
+  }
+
+  function getModeCards(){
+    return Array.from(window.parent.document.querySelectorAll('.feature-card'))
+      .filter(card=>{
+        const style = window.parent.getComputedStyle(card);
+        if (style.display === 'none' || style.visibility === 'hidden') return false;
+        return card.offsetWidth > 0 || card.offsetHeight > 0;
+      });
+  }
+
   setTimeout(()=>{
     speak(
       '강의 자료 분석입니다. 1번, 파일 업로드. 2번, 카메라 촬영. 숫자키 1 또는 2를 눌러 선택하세요. 백스페이스 를 누르면 홈으로 돌아갑니다.'
@@ -26,9 +56,13 @@ __SPEAK_FN__
   }, 500);
 
   function attachFocus(){
+    disableOwnFrame();
+    disablePassiveIframes();
+
     // 1. Buttons
     window.parent.document.querySelectorAll('button').forEach(b=>{
       if(b._rmA) return; b._rmA=true;
+      b.setAttribute('tabindex', '-1');
       b.addEventListener('focus', ()=>{
         const t = b.innerText.trim();
         if(t.includes('파일 업로드'))   speak('일번, 파일 업로드 버튼입니다. 엔터를 눌러주세요.');
@@ -63,31 +97,42 @@ __SPEAK_FN__
   // Focus Trapping
   function handleTab(e) {
     if (e.key !== 'Tab') return;
-    const doc = window.parent.document;
-    const focusables = Array.from(doc.querySelectorAll('button, [tabindex="0"], input, textarea, select, a'))
-      .filter(el => {
-        if (el.offsetWidth <= 0 && el.offsetHeight <= 0) return false;
-        if (window.parent.getComputedStyle(el).display === 'none') return false;
-        return true;
-      });
-    if (focusables.length === 0) return;
-    const first = focusables[0];
-    const last = focusables[focusables.length - 1];
-    const active = doc.activeElement;
-    if (e.shiftKey) {
-      if (active === first || !focusables.includes(active)) { last.focus(); e.preventDefault(); }
-    } else {
-      if (active === last || !focusables.includes(active)) { first.focus(); e.preventDefault(); }
+    const cards = getModeCards();
+    if (cards.length === 0) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    const active = window.parent.document.activeElement;
+    const currentIndex = cards.indexOf(active);
+    if (currentIndex === -1) {
+      (e.shiftKey ? cards[cards.length - 1] : cards[0]).focus();
+      return;
     }
+
+    const nextIndex = e.shiftKey
+      ? (currentIndex - 1 + cards.length) % cards.length
+      : (currentIndex + 1) % cards.length;
+    cards[nextIndex].focus();
   }
-  if (!window.parent._rmTabHandler) {
-    window.parent._rmTabHandler = handleTab;
-    window.parent.document.addEventListener('keydown', window.parent._rmTabHandler);
+  function bindTabHandler(){
+    try{
+      if(window.parent._rmTabHandler){
+        window.parent.document.removeEventListener('keydown', window.parent._rmTabHandler);
+      }
+      window.parent._rmTabHandler = handleTab;
+      window.parent.document.addEventListener('keydown', window.parent._rmTabHandler);
+    }catch(err){}
+
+    document.removeEventListener('keydown', handleTab);
+    document.addEventListener('keydown', handleTab);
   }
 
   const obs = new MutationObserver(attachFocus);
   obs.observe(window.parent.document.body, {childList:true, subtree:true});
-  setTimeout(attachFocus, 800);
+  attachFocus();
+  bindTabHandler();
+  setTimeout(attachFocus, 150);
 
   function onKey(e){
     const tag = e.target.tagName;
@@ -123,6 +168,27 @@ _UPLOAD_TEMPLATE = """
 (function(){
 __SPEAK_FN__
 
+  function disableOwnFrame(){
+    try{
+      if(!window.frameElement) return;
+      window.frameElement.setAttribute('tabindex', '-1');
+      window.frameElement.setAttribute('aria-hidden', 'true');
+    }catch(err){}
+  }
+
+  function disablePassiveIframes(){
+    window.parent.document.querySelectorAll('iframe').forEach(frame=>{
+      const rect = frame.getBoundingClientRect();
+      const height =
+        rect.height ||
+        frame.clientHeight ||
+        Number(frame.getAttribute('height') || 0);
+      if (height > 4) return;
+      frame.setAttribute('tabindex', '-1');
+      frame.setAttribute('aria-hidden', 'true');
+    });
+  }
+
   setTimeout(()=>{
     speak(
       '파일 업로드 모드입니다. 탭 키를 눌러 파일 선택 버튼으로 이동하세요. 백스페이스 를 누르면 모드 선택으로 돌아갑니다.'
@@ -144,6 +210,9 @@ __SPEAK_FN__
   obs.observe(window.parent.document.body, {childList:true, subtree:true, characterData:true});
 
   function attachFocus(){
+    disableOwnFrame();
+    disablePassiveIframes();
+
     window.parent.document.querySelectorAll('button').forEach(b=>{
       if(b._rmA) return; b._rmA=true;
       b.addEventListener('focus', ()=>{
@@ -155,7 +224,8 @@ __SPEAK_FN__
   }
   const obs2 = new MutationObserver(attachFocus);
   obs2.observe(window.parent.document.body, {childList:true, subtree:true});
-  setTimeout(attachFocus, 800);
+  attachFocus();
+  setTimeout(attachFocus, 150);
 
   function onKey(e){
     const tag = e.target.tagName;
@@ -312,6 +382,13 @@ __SPEAK_FN__
 
 _BRIDGE_JS = """
 <script>
+try{
+  if(window.frameElement){
+    window.frameElement.setAttribute('tabindex', '-1');
+    window.frameElement.setAttribute('aria-hidden', 'true');
+  }
+}catch(err){}
+
 window.addEventListener('message', function(e){
   if(!e.data) return;
   const btns = window.parent.document.querySelectorAll('button');
