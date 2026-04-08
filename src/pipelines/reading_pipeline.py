@@ -1,16 +1,16 @@
 """
 ReadMate 메인 파이프라인 오케스트레이터.
-입력 타입에 따라 OCR/PDF/STT 경로를 분기하고
-LLM 순서로 실행한다.
-각 서비스는 ABC 인터페이스로 주입받아 모델 교체가 자유롭다.
+입력 타입에 따라 OCR/PDF/STT 경로를 분기하고 LLM, TTS를 순서대로 실행한다.
 """
 
 from __future__ import annotations
 
 import logging
+from functools import lru_cache
+from pathlib import Path
+from typing import Any
 
-from services.base import BaseLLM, BaseOCR, BasePDF, BaseSTT, BaseTTS
-from src.models.schemas import (
+from models.schemas import (
     InputPayload,
     InputType,
     LLMResult,
@@ -21,8 +21,23 @@ from src.models.schemas import (
     TaskType,
     TTSResult,
 )
+from services.base import BaseLLM, BaseOCR, BasePDF, BaseSTT, BaseTTS
 
 logger = logging.getLogger(__name__)
+
+SUPPORTED_INPUT_TYPES: dict[str, InputType] = {
+    '.png': InputType.IMAGE,
+    '.jpg': InputType.IMAGE,
+    '.jpeg': InputType.IMAGE,
+    '.webp': InputType.IMAGE,
+    '.bmp': InputType.IMAGE,
+    '.pdf': InputType.PDF,
+    '.mp3': InputType.AUDIO,
+    '.wav': InputType.AUDIO,
+    '.m4a': InputType.AUDIO,
+    '.ogg': InputType.AUDIO,
+    '.flac': InputType.AUDIO,
+}
 
 
 class ReadingPipeline:
@@ -30,18 +45,7 @@ class ReadingPipeline:
     ReadMate 전체 파이프라인 오케스트레이터.
 
     각 서비스는 생성자에서 주입받는다.
-    모델 교체는 해당 ABC를 구현한 클래스를 바꿔 끼우기만 하면 된다.
-
-    Example:
-        pipeline = ReadingPipeline(
-            ocr=Qwen2VLEngine(),
-            pdf=PyPDFEngine(ocr_fallback=Qwen2VLEngine()),
-            stt=FasterWhisperEngine(),
-            llm=QwenLLM(),
-            llm=GemmaLLM(),
-            tts=SomeTTSEngine(),
-        )
-        result = pipeline.run(payload)
+    UI나 API는 이 객체 하나만 호출하면 된다.
     """
 
     def __init__(
@@ -58,24 +62,61 @@ class ReadingPipeline:
         self.llm = llm
         self.tts = tts
 
-    def run(self, payload: InputPayload) -> PipelineResult:
+    def run(self, payload: InputPayload, on_progress: Any | None = None) -> PipelineResult:
         """
-        입력 타입에 따라 적절한 경로로 분기해 전체 파이프라인 실행.
+        입력 타입에 따라 적절한 경로로 분기해 전체 파이프라인을 실행한다.
 
         Args:
-            payload: 파일 타입, 콘텐츠, 질문, 목소리 설정 포함
+            payload: 입력 파일 정보, 질문, 음성 프리셋을 포함한 요청 데이터
+            on_progress: 진행 상황을 보고할 콜백 함수 (str 인자)
 
         Returns:
             PipelineResult: 추출 텍스트, LLM 결과, TTS 결과, 경고 목록
         """
+        result = self.run_analysis(payload, on_progress=on_progress)
+        if result.status is not PipelineStatus.SUCCESS or result.llm_result is None:
+            return result
+
+        if on_progress:
+            on_progress('음성 합성 준비 중...')
+
+        task = TaskType.QA if payload.question else TaskType.SUMMARIZE
+        result.tts_result = self.synthesize_text(
+            self._build_tts_input(result.llm_result, task),
+            payload.voice_preset,
+            result.warnings,
+        )
+        return result
+
+    def run_analysis(self, payload: InputPayload, on_progress: Any | None = None) -> PipelineResult:
+        """
+        입력에서 텍스트 추출과 LLM 분석까지만 실행한다.
+
+        Args:
+            payload: 입력 파일 정보, 질문, 음성 프리셋을 포함한 요청 데이터
+            on_progress: 진행 상황을 보고할 콜백 함수 (str 인자)
+
+        Returns:
+            PipelineResult: 추출 텍스트와 LLM 결과가 채워진 분석 결과
+        """
         warnings: list[str] = []
 
         try:
-            # ── 1. 텍스트 추출 ──────────────────────────────
-            extracted_text, ocr_engine, stt_engine = self._extract_text(
-                payload, warnings
-            )
+            if on_progress:
+                msg = (
+                    'OCR 처리 중...'
+                    if payload.input_type in (InputType.IMAGE, InputType.PDF)
+                    else '음성 인식 중...'
+                    if payload.input_type == InputType.AUDIO
+                    else '텍스트 추출 중...'
+                )
+                on_progress(msg)
 
+            if payload.input_type in (InputType.IMAGE, InputType.PDF):
+                logger.info('ocr 추출중')
+            extracted_text, ocr_engine, stt_engine = self._extract_text(payload, warnings)
+            if payload.input_type in (InputType.IMAGE, InputType.PDF):
+                logger.info('ocr 추출완료')
             if not extracted_text.strip():
                 return PipelineResult(
                     extracted_text='',
@@ -83,35 +124,48 @@ class ReadingPipeline:
                     warnings=['텍스트 추출 결과가 비어 있습니다.'],
                 )
 
-            # ── 2. LLM 분석 ─────────────────────────────────
-            task = TaskType.QA if payload.question else TaskType.SUMMARIZE
-            llm_result = self._run_llm(extracted_text, task, payload.question, warnings)
+            if on_progress:
+                on_progress('잠시만 기다려주세요...')
 
-            # ── 3. TTS 합성 ─────────────────────────────────
-            tts_input = self._build_tts_input(llm_result, payload.question)
-            tts_result = self._run_tts(tts_input, payload.voice_preset, warnings)
+            task = TaskType.QA if payload.question else TaskType.SUMMARIZE
+            llm_result = self._run_llm(extracted_text, task, payload.question)
 
             return PipelineResult(
                 extracted_text=extracted_text,
                 llm_result=llm_result,
-                tts_result=tts_result,
+                tts_result=None,
                 ocr_engine=ocr_engine,
                 stt_engine=stt_engine,
                 status=PipelineStatus.SUCCESS,
                 warnings=warnings,
             )
-
-        except Exception as e:
+        except Exception as exc:
             logger.exception('Pipeline execution failed')
             return PipelineResult(
                 extracted_text='',
                 status=PipelineStatus.FAILED,
-                warnings=[f'파이프라인 오류: {e}'],
+                warnings=[f'파이프라인 오류: {exc}'],
             )
 
-    # ─────────────────────────────────────────────────────────
-    # 텍스트 추출 분기
-    # ─────────────────────────────────────────────────────────
+    def synthesize_text(
+        self,
+        text: str,
+        voice_preset: str = 'default',
+        warnings: list[str] | None = None,
+    ) -> TTSResult | None:
+        """
+        주어진 텍스트로 TTS를 실행한다.
+
+        Args:
+            text: 음성으로 합성할 텍스트
+            voice_preset: 사용할 프리셋 목소리
+            warnings: 실패 시 경고를 누적할 목록
+
+        Returns:
+            TTSResult | None: 성공 시 TTS 결과, 실패 시 None
+        """
+        warning_list = warnings if warnings is not None else []
+        return self._run_tts(text, voice_preset, warning_list)
 
     def _extract_text(
         self,
@@ -119,10 +173,11 @@ class ReadingPipeline:
         warnings: list[str],
     ) -> tuple[str, str | None, str | None]:
         """
-        입력 타입에 따라 OCR / PDF / STT 경로로 분기.
+        입력 타입에 따라 OCR, PDF, STT 또는 사전 추출 텍스트 경로로 분기한다.
 
         Returns:
-            (추출 텍스트, ocr_engine, stt_engine)
+            tuple[str, str | None, str | None]:
+                추출 텍스트, OCR 엔진명, STT 엔진명
         """
         match payload.input_type:
             case InputType.IMAGE:
@@ -130,17 +185,18 @@ class ReadingPipeline:
             case InputType.PDF:
                 return self._run_pdf(payload.content, warnings)
             case InputType.AUDIO:
-                return self._run_audio(payload.content, warnings)
+                return self._run_audio(payload.content)
             case InputType.QUESTION:
-                # 질문만 있는 경우: 텍스트 추출 없이 QA로 진행
-                return payload.question or '', None, None
+                return self._decode_question_context(payload.content), None, None
             case _:
                 raise ValueError(f'지원하지 않는 입력 타입: {payload.input_type}')
 
     def _run_image(
-        self, content: bytes, warnings: list[str]
+        self,
+        content: bytes,
+        warnings: list[str],
     ) -> tuple[str, str | None, str | None]:
-        """이미지 → OCR 경로."""
+        """이미지 바이트를 OCR 처리한다."""
         result = self.ocr.recognize(content)
         if result.avg_confidence < 0.75:
             warnings.append(
@@ -148,14 +204,18 @@ class ReadingPipeline:
                 f'엔진: {result.engine}'
             )
         logger.info(
-            '[ocr] engine=%s avg_conf=%.2f', result.engine, result.avg_confidence
+            '[ocr] engine=%s avg_conf=%.2f',
+            result.engine,
+            result.avg_confidence,
         )
         return result.raw_text, result.engine, None
 
     def _run_pdf(
-        self, content: bytes, warnings: list[str]
+        self,
+        content: bytes,
+        warnings: list[str],
     ) -> tuple[str, str | None, str | None]:
-        """PDF → pypdf 또는 OCR 분기 경로."""
+        """PDF를 텍스트 추출 또는 OCR 경로로 처리한다."""
         result: PDFResult = self.pdf.extract(content)
         engine = 'ocr(scanned)' if result.is_scanned else 'pypdf'
         if result.is_scanned:
@@ -163,44 +223,48 @@ class ReadingPipeline:
         logger.info('[pdf] engine=%s pages=%d', engine, result.page_count)
         return result.text, engine, None
 
-    def _run_audio(
-        self, content: bytes, warnings: list[str]
-    ) -> tuple[str, str | None, str | None]:
-        """오디오 → STT 경로."""
+    def _run_audio(self, content: bytes) -> tuple[str, str | None, str | None]:
+        """오디오 바이트를 STT 처리한다."""
         result: STTResult = self.stt.transcribe(content)
         logger.info('[stt] engine=%s lang=%s', result.engine, result.language)
         return result.text, None, result.engine
 
-    # ─────────────────────────────────────────────────────────
-    # LLM
-    # ─────────────────────────────────────────────────────────
+    def _decode_question_context(self, content: bytes) -> str:
+        """
+        이미 추출된 텍스트를 UTF-8 바이트에서 복원한다.
+
+        QUESTION 타입은 업로드 파일이 아니라 이미 확보된 텍스트 본문에 대한
+        질의응답을 위해 사용한다.
+        """
+        try:
+            return content.decode('utf-8').strip()
+        except UnicodeDecodeError as exc:
+            raise ValueError('QUESTION 타입 content는 UTF-8 텍스트 바이트여야 합니다.') from exc
 
     def _run_llm(
         self,
         text: str,
         task: TaskType,
         question: str | None,
-        warnings: list[str],
     ) -> LLMResult:
-        """LLM 분석 실행."""
+        """LLM 분석을 실행한다."""
         result = self.llm.generate(text, task, question)
         logger.info('[llm] engine=%s task=%s', result.engine, task.value)
         return result
 
-    # ─────────────────────────────────────────────────────────
-    # TTS
-    # ─────────────────────────────────────────────────────────
-
-    def _build_tts_input(self, llm_result: LLMResult, question: str | None) -> str:
-        """TTS에 넘길 텍스트 결정. QA면 답변, 아니면 요약문 사용."""
-        if question and llm_result.qa_answer:
+    def _build_tts_input(self, llm_result: LLMResult, task: TaskType) -> str:
+        """TTS에 넘길 본문을 결정한다."""
+        if task is TaskType.QA and llm_result.qa_answer:
             return llm_result.qa_answer
         return llm_result.summary
 
     def _run_tts(
-        self, text: str, voice_preset: str, warnings: list[str]
+        self,
+        text: str,
+        voice_preset: str,
+        warnings: list[str],
     ) -> TTSResult | None:
-        """TTS 합성 실행. 실패해도 파이프라인 전체를 막지 않는다."""
+        """TTS를 실행하고 실패 시 경고만 남긴다."""
         try:
             result = self.tts.synthesize(text, voice_preset)
             logger.info(
@@ -210,7 +274,274 @@ class ReadingPipeline:
                 result.duration_sec,
             )
             return result
-        except Exception as e:
-            warnings.append(f'TTS 실패 (오디오 생략): {e}')
-            logger.warning('[tts] failed: %s', e)
+        except Exception as exc:
+            warnings.append(f'TTS 실패 (오디오 생략): {exc}')
+            logger.warning('[tts] failed: %s', exc)
             return None
+
+
+def create_default_reading_pipeline() -> ReadingPipeline:
+    """
+    현재 코드베이스 기준 기본 엔진 조합으로 파이프라인을 구성한다.
+
+    Returns:
+        ReadingPipeline: 기본 서비스 조합이 연결된 오케스트레이터
+    """
+    from services.llm_remote import RemoteLLM
+    from services.ocr_service import Qwen2VLEngine
+    from services.pdf_service import PyPDFEngine
+    from services.stt_whisper_service import ReadMateSTT
+    from services.tts_elevenlabs import ElevenLabsTTS
+    from services.tts_unavailable import UnavailableTTSEngine
+
+    ocr = Qwen2VLEngine()
+    try:
+        tts_engine: BaseTTS = ElevenLabsTTS()
+    except Exception as exc:
+        reason = f'ElevenLabs TTS 초기화 실패: {exc}. .env에 ELEVENLABS_API_KEY를 확인하세요.'
+        logger.warning('[tts] fallback to unavailable engine: %s', reason)
+        tts_engine = UnavailableTTSEngine(reason)
+
+    return ReadingPipeline(
+        ocr=ocr,
+        pdf=PyPDFEngine(ocr_fallback=ocr),
+        stt=ReadMateSTT(),
+        llm=RemoteLLM(),
+        tts=tts_engine,
+    )
+
+
+@lru_cache(maxsize=1)
+def get_default_reading_pipeline() -> ReadingPipeline:
+    """기본 ReadingPipeline 인스턴스를 캐시해 재사용한다."""
+    return create_default_reading_pipeline()
+
+
+def infer_input_type(file_name: str) -> InputType:
+    """
+    파일 확장자로 파이프라인 입력 타입을 판별한다.
+
+    Args:
+        file_name: 업로드 파일 이름
+
+    Returns:
+        InputType: 파이프라인 입력 타입
+
+    Raises:
+        ValueError: 지원하지 않는 확장자일 때
+    """
+    suffix = Path(file_name).suffix.lower()
+    input_type = SUPPORTED_INPUT_TYPES.get(suffix)
+    if input_type is None:
+        raise ValueError(f'지원하지 않는 파일 형식입니다: {suffix or "(확장자 없음)"}')
+    return input_type
+
+
+def build_input_payload(
+    file_name: str,
+    content: bytes,
+    question: str | None = None,
+    voice_preset: str = 'default',
+) -> InputPayload:
+    """
+    UI 입력을 파이프라인 입력으로 변환한다.
+
+    Args:
+        file_name: 업로드 파일 이름
+        content: 파일 원본 바이트
+        question: 질문 텍스트
+        voice_preset: TTS 프리셋 이름
+
+    Returns:
+        InputPayload: 파이프라인 요청 객체
+    """
+    return InputPayload(
+        input_type=infer_input_type(file_name),
+        file_name=file_name,
+        content=content,
+        question=(question or '').strip() or None,
+        voice_preset=voice_preset.strip() or 'default',
+    )
+
+
+def analyze_content(
+    file_name: str,
+    content: bytes,
+    voice_preset: str = 'default',
+    on_progress: Any | None = None,
+) -> dict[str, object]:
+    """
+    파일을 기본 ReadingPipeline으로 분석하고 frontend 상태 형식으로 변환한다.
+
+    Args:
+        file_name: 업로드 파일 이름
+        content: 파일 원본 바이트
+        voice_preset: TTS 프리셋 이름
+        on_progress: 진행 상황을 보고할 콜백 함수
+
+    Returns:
+        dict[str, object]: frontend 세션 상태에 바로 넣을 수 있는 값
+    """
+    payload = build_input_payload(
+        file_name=file_name,
+        content=content,
+        voice_preset=voice_preset,
+    )
+    result = get_default_reading_pipeline().run(payload, on_progress=on_progress)
+    return to_frontend_state(result)
+
+
+def synthesize_summary_audio(
+    summary: str,
+    voice_preset: str = 'default',
+) -> dict[str, object]:
+    """
+    요약 텍스트를 음성으로 합성해 frontend 상태 형식으로 돌려준다.
+
+    Args:
+        summary: 요약 본문 텍스트
+        voice_preset: TTS 프리셋 이름
+
+    Returns:
+        dict[str, object]: audio bytes와 경고 목록
+    """
+    warnings: list[str] = []
+    normalized_summary = summary.strip()
+    if not normalized_summary:
+        return {
+            'audio_bytes': None,
+            'audio_mime': None,
+            'audio_file_name': None,
+            'pipeline_warnings': ['TTS 생성할 요약이 비어 있습니다.'],
+        }
+
+    tts_result = get_default_reading_pipeline().synthesize_text(
+        normalized_summary,
+        voice_preset=voice_preset,
+        warnings=warnings,
+    )
+    if tts_result is None:
+        return {
+            'audio_bytes': None,
+            'audio_mime': None,
+            'audio_file_name': None,
+            'pipeline_warnings': warnings,
+        }
+
+    return {
+        **_read_audio_payload(tts_result),
+        'pipeline_warnings': warnings,
+    }
+
+
+def answer_question(question: str, context: str) -> str:
+    """
+    기존 본문을 기반으로 질문 답변을 생성한다.
+
+    Args:
+        question: 사용자 질문
+        context: 이미 추출된 본문
+
+    Returns:
+        str: 질의응답 결과 텍스트
+    """
+    normalized_question = question.strip()
+    normalized_context = context.strip()
+    if not normalized_question:
+        raise ValueError('질문이 비어 있습니다.')
+    if not normalized_context:
+        raise ValueError('질문할 본문이 없습니다.')
+
+    llm_result = get_default_reading_pipeline().llm.generate(
+        normalized_context,
+        TaskType.QA,
+        normalized_question,
+    )
+    return (llm_result.qa_answer or llm_result.summary).strip()
+
+
+def to_frontend_state(result: PipelineResult) -> dict[str, object]:
+    """
+    파이프라인 결과를 frontend 세션 상태 구조로 변환한다.
+
+    Args:
+        result: 파이프라인 실행 결과
+
+    Returns:
+        dict[str, object]: frontend 상태 딕셔너리
+
+    Raises:
+        RuntimeError: 파이프라인 실패 또는 LLM 결과 누락 시
+    """
+    if result.status is not PipelineStatus.SUCCESS:
+        warning_text = '\n'.join(result.warnings) or '알 수 없는 오류'
+        raise RuntimeError(f'파이프라인 실행 실패: {warning_text}')
+
+    if result.llm_result is None:
+        raise RuntimeError('LLM 결과가 비어 있습니다.')
+
+    return {
+        'raw_text': result.extracted_text,
+        'summary': result.llm_result.summary,
+        'quiz': _normalize_quiz(result.llm_result.quiz),
+        'memo_keywords': result.llm_result.key_points,
+        **_read_audio_payload(result.tts_result),
+        'pipeline_warnings': result.warnings,
+    }
+
+
+def _normalize_quiz(quiz: list | None) -> list[dict[str, object]]:
+    """
+    QuizItem 목록을 frontend 퀴즈 패널 형식으로 바꾼다.
+
+    Args:
+        quiz: 파이프라인 퀴즈 결과
+
+    Returns:
+        list[dict[str, object]]: frontend 퀴즈 데이터
+    """
+    if not quiz:
+        return []
+
+    return [
+        {
+            'q': item.question,
+            'options': item.options,
+            'answer': item.answer_index,
+        }
+        for item in quiz
+    ]
+
+
+def _resolve_audio_meta(audio_path: Path) -> tuple[str, str]:
+    """오디오 파일 경로에서 MIME 타입과 기본 파일명을 계산한다."""
+    if audio_path.suffix.lower() == '.mp3':
+        return 'audio/mpeg', 'readmate.mp3'
+    return 'audio/wav', 'readmate.wav'
+
+
+def _read_audio_payload(tts_result: TTSResult | None) -> dict[str, object]:
+    """TTS 결과 파일을 읽고 프런트엔드용 메타데이터를 함께 반환한다."""
+    if tts_result is None:
+        return {
+            'audio_bytes': None,
+            'audio_mime': None,
+            'audio_file_name': None,
+        }
+
+    audio_path = Path(tts_result.audio_path)
+    if not audio_path.exists():
+        return {
+            'audio_bytes': None,
+            'audio_mime': None,
+            'audio_file_name': None,
+        }
+
+    audio_mime, audio_file_name = _resolve_audio_meta(audio_path)
+    audio_bytes = audio_path.read_bytes()
+    audio_path.unlink(missing_ok=True)
+    return {
+        'audio_bytes': audio_bytes,
+        'audio_mime': audio_mime,
+        'audio_file_name': audio_file_name,
+    }

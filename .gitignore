@@ -6,7 +6,10 @@ dist/
 wheels/
 *.egg-info
 
-data/
+data/*
+!data/.gitkeep
+!data/static_tts/
+!data/static_tts/**
 outputs/
 .DS_Store
 
@@ -15,3 +18,4 @@ outputs/
 .idea
 
 .env
+.claude/settings.local.json

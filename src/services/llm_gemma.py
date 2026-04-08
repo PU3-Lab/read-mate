@@ -11,7 +11,7 @@ import re
 from typing import Any
 
 import torch
-from transformers import AutoProcessor, Gemma3ForConditionalGeneration
+from transformers import AutoModelForCausalLM, AutoProcessor
 
 from core.config import (
     LLM_MAX_INPUT_CHARS,
@@ -27,10 +27,10 @@ logger = logging.getLogger(__name__)
 
 
 class GemmaLLM(ChunkedLLM):
-    """Gemma 기반 ReadMate LLM 서비스."""
+    """Gemma4 기반 ReadMate LLM 서비스."""
 
-    _shared_model: Gemma3ForConditionalGeneration | None = None
-    _shared_processor = None
+    _shared_model: AutoModelForCausalLM | None = None
+    _shared_processor: AutoProcessor | None = None
     _shared_model_name: str | None = None
 
     def __init__(
@@ -80,7 +80,10 @@ class GemmaLLM(ChunkedLLM):
                 )
                 raw_output = self._run_inference(prompt)
                 payload = self._parse_json_output(raw_output)
-                return self._to_result(payload)
+                result = self._to_result(payload)
+                if task is TaskType.QA and not result.qa_answer:
+                    raise ValueError('QA 태스크에서 qa_answer가 비어 있습니다.')
+                return result
             except Exception as exc:
                 last_error = exc
                 logger.warning(
@@ -110,12 +113,12 @@ class GemmaLLM(ChunkedLLM):
 
     def _get_or_load_model(
         self,
-    ) -> tuple[Any, Gemma3ForConditionalGeneration]:
+    ) -> tuple[AutoProcessor, AutoModelForCausalLM]:
         """
         프로세서와 모델을 싱글톤으로 로드한다.
 
         Returns:
-            tuple[Any, Gemma3ForConditionalGeneration]: 재사용 가능한 모델 객체
+            tuple[AutoProcessor, AutoModelForCausalLM]: 재사용 가능한 모델 객체
         """
         if (
             self.__class__._shared_model is not None
@@ -135,9 +138,9 @@ class GemmaLLM(ChunkedLLM):
             self.model_name,
             trust_remote_code=True,
         )
-        model = Gemma3ForConditionalGeneration.from_pretrained(
+        model = AutoModelForCausalLM.from_pretrained(
             self.model_name,
-            torch_dtype=self.dtype,
+            dtype=self.dtype,
             trust_remote_code=True,
         )
         model.to(self.device)
@@ -183,7 +186,8 @@ class GemmaLLM(ChunkedLLM):
             if task is TaskType.SUMMARIZE
             else (
                 '질문에 대해 본문 근거만 사용해 답하세요. '
-                '답을 찾기 어려우면 모른다고 분명히 쓰세요.'
+                '답을 찾기 어려우면 모른다고 분명히 쓰세요. '
+                '반드시 qa_answer 필드에 답변을 작성하세요.'
             )
         )
 
@@ -203,6 +207,7 @@ class GemmaLLM(ChunkedLLM):
             '규칙:\n'
             '- summary는 자연스러운 한국어 문단으로 작성합니다.\n'
             '- key_points는 중복 없이 작성합니다.\n'
+            '- QA이면 qa_answer에 반드시 답변을 작성합니다.\n'
             '- QA가 아니면 qa_answer는 null로 둡니다.\n'
             '- quiz는 현재 지원하지 않으면 null로 둡니다.\n'
             f'- 작업 지시: {task_instruction}{retry_instruction}\n\n'
@@ -223,14 +228,12 @@ class GemmaLLM(ChunkedLLM):
         messages = [
             {
                 'role': 'system',
-                'content': [
-                    {
-                        'type': 'text',
-                        'text': '당신은 JSON만 반환하는 정확한 도우미입니다.',
-                    }
-                ],
+                'content': [{'type': 'text', 'text': '당신은 JSON만 반환하는 정확한 도우미입니다.'}],
             },
-            {'role': 'user', 'content': [{'type': 'text', 'text': prompt}]},
+            {
+                'role': 'user',
+                'content': [{'type': 'text', 'text': prompt}],
+            },
         ]
         encoded = self.processor.apply_chat_template(
             messages,
@@ -252,10 +255,7 @@ class GemmaLLM(ChunkedLLM):
             )
 
         generated_tokens = output[0][input_len:]
-        return self.processor.decode(
-            generated_tokens,
-            skip_special_tokens=True,
-        ).strip()
+        return self.processor.decode(generated_tokens, skip_special_tokens=True).strip()
 
     def _parse_json_output(self, raw_output: str) -> dict[str, Any]:
         """

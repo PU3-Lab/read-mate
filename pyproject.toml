@@ -14,9 +14,9 @@ dependencies = [
     "accelerate>=0.30.0",          # 모델 로딩 최적화 (MPS 포함)
     "sentencepiece>=0.2.0",        # Qwen2.5 토크나이저
     "huggingface-hub>=1.7.1",      # 모델 다운로드 관리
-    "torch>=2.10.0 ; sys_platform == 'win32'",
-    "torchvision>=0.25.0 ; sys_platform == 'win32'",
-    "torchaudio>=2.10.0 ; sys_platform == 'win32'",
+    "torch>=2.10.0",
+    "torchvision>=0.25.0",
+    "torchaudio>=2.10.0",
     "pypdf>=5.0.0",                  # 텍스트형 PDF 본문 추출
     "pdf2image>=1.17.0",             # 스캔형 PDF 페이지 래스터화 (Poppler 의존)
     "faster-whisper>=1.0.0",        # 로컬 STT (녹음 파일 → 텍스트)
@@ -26,6 +26,7 @@ dependencies = [
     "numpy>=2.4.2",
     "pandas<3",
     "python-dotenv>=1.2.1",        # API 키 환경변수 관리
+    "phonemizer>=3.3.0",          # Zonos TTS phoneme 전처리
     "tqdm>=4.67.3",
     "pyprojroot>=0.3.0",           # 프로젝트 루트 경로 관리
     "fastapi>=0.133.0",
@@ -34,9 +35,10 @@ dependencies = [
     "jupyter>=1.1.1",
     "openai-whisper>=20250625",
     "yt-dlp>=2026.3.17",
+    "pymupdf>=1.24.0",
     "zonos>=0.1.0.dev0",
     "zyphra>=0.1.6",
-    "pymupdf>=1.27.2.2",
+    "websockets>=16.0",
 ]
 
 [build-system]
@@ -55,6 +57,7 @@ url = "https://download.pytorch.org/whl/cu126" # 본인의 CUDA 버전에 맞춤
 explicit = true
 
 [tool.uv.sources]
+zonos = { git = "https://github.com/Zyphra/Zonos.git" }
 torch = [
   { index = "pytorch-gpu", marker = "sys_platform == 'win32'" },
   { index = "pytorch-gpu", marker = "sys_platform == 'linux'" },
@@ -94,6 +97,7 @@ ignore = [
 ]
 
 [tool.ruff.format]
+preview = true
 quote-style = "single"
 indent-style = "space"
 line-ending = "auto"
@@ -101,6 +105,7 @@ line-ending = "auto"
 [dependency-groups]
 dev = [
     "pytest>=9.0.2",
+    "ruff>=0.15.9",
 ]
 
 [tool.ruff.lint.per-file-ignores]

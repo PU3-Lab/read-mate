@@ -18,7 +18,14 @@ from pyprojroot import here
 ROOT: Path = here()
 load_dotenv(ROOT / '.env')
 
-from lib.utils.path import data_path, embeddings_path, model_path, tmp_path, voices_path
+from lib.utils.path import (
+    data_path,
+    embeddings_path,
+    model_path,
+    static_tts_path,
+    tmp_path,
+    voices_path,
+)
 
 # ─────────────────────────────────────────
 # 경로
@@ -29,6 +36,8 @@ MODEL_DIR: Path = model_path()
 TMP_DIR: Path = tmp_path()
 VOICES_DIR: Path = voices_path()
 EMBEDDINGS_DIR: Path = embeddings_path()
+STATIC_TTS_DIR: Path = static_tts_path()
+STATIC_TTS_MANIFEST: Path = static_tts_path('manifest.json')
 
 # ─────────────────────────────────────────
 # API 키
@@ -43,8 +52,10 @@ ELEVENLABS_API_KEY: str = os.getenv('ELEVENLABS_API_KEY', '')
 # 모델명
 # ─────────────────────────────────────────
 
-LLM_MODEL_DEFAULT: str = 'google/gemma-3-4b-it'
-LLM_MODEL_LARGE: str = 'google/gemma-3-12b-it'
+LLM_ENGINE: str = os.getenv('LLM_ENGINE', 'gemma')  # gemma | qwen | openai
+LLM_SERVER_URL: str = os.getenv('LLM_SERVER_URL', 'http://localhost:8000')
+LLM_MODEL_DEFAULT: str = 'google/gemma-4-E4B-it'
+LLM_MODEL_LARGE: str = 'google/gemma-4-26B-A4B-it'
 LLM_MODEL_API: str = 'gpt-4.1-mini'
 
 STT_MODEL: str = 'large-v3'  # faster-whisper 모델 크기
