@@ -10,7 +10,7 @@ ReadMate 챗봇 인터랙티브 테스트.
 
 실행:
     uv run python tests/test_chatbot.py
-    uv run python tests/test_chatbot.py --url http://localhost:8000
+    uv run python tests/test_chatbot.py --url http://localhost:28765
 """
 
 from __future__ import annotations
@@ -41,7 +41,7 @@ def main() -> None:
 
     if not client.health():
         print(f'\n❌ 서버에 연결할 수 없습니다: {args.url}')
-        print('   uv run uvicorn backend.main:app --port 8000 으로 서버를 먼저 실행하세요.')
+        print('   uv run uvicorn backend.main:app --port 28765 으로 서버를 먼저 실행하세요.')
         return
 
     # 1~2. 요약 수행 후 세션 시작

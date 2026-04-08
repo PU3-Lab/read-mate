@@ -51,17 +51,21 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        'http://localhost:8501',
-        'http://127.0.0.1:8501',
-    ],
+    allow_origins=['*'],
     allow_credentials=True,
     allow_methods=['*'],
     allow_headers=['*'],
 )
 
-app.include_router(http_routes.router)
+@app.middleware('http')
+async def log_requests(request, call_next):
+    logger.info(f'[http] {request.method} {request.url.path}')
+    response = await call_next(request)
+    logger.info(f'[http] {request.method} {request.url.path} - {response.status_code}')
+    return response
+
 app.include_router(tts_routes.router)
+app.include_router(http_routes.router)
 app.include_router(ws_routes.router)
 
 
@@ -79,7 +83,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description='ReadMate 서버 실행')
     parser.add_argument('--dev', action='store_true', help='dev 모드 (Edge TTS 사용)')
-    parser.add_argument('--port', type=int, default=8000, help='서버 포트 (기본: 8000)')
+    parser.add_argument('--port', type=int, default=28765, help='서버 포트 (기본: 28765)')
     args = parser.parse_args()
 
     if args.dev:

@@ -10,7 +10,7 @@ REM   set LLM_ENGINE=openai && scripts\start_server.bat
 
 setlocal
 
-set PORT=8000
+set PORT=28765
 set DEV_FLAG=
 
 REM 인자 파싱
@@ -37,7 +37,7 @@ echo   포트    : %PORT%
 if defined LLM_ENGINE (
     echo   엔진    : %LLM_ENGINE%
 ) else (
-    echo   엔진    : gemma (기본)
+    echo   엔진    : openai (기본)
 )
 if defined DEV_FLAG (
     echo   모드    : dev (Edge TTS)

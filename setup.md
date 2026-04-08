@@ -18,7 +18,7 @@ uv pip install -e .
 
 ```env
 LLM_ENGINE=gemma
-LLM_SERVER_URL=http://localhost:8000
+LLM_SERVER_URL=http://localhost:28765
 OPENAI_API_KEY=
 ELEVENLABS_API_KEY=
 ```
@@ -74,8 +74,8 @@ LLM_SERVER_URL=http://localhost:8001 ./scripts/start_app.sh
 스크립트를 쓰지 않을 때:
 
 ```bash
-uv run uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
-uv run streamlit run frontend/app.py --server.port 8501
+uv run uvicorn backend.main:app --host 0.0.0.0 --port 28765 --reload
+uv run streamlit run frontend/app.py --server.port 28501
 ```
 
 ## 6. 확인용 테스트
