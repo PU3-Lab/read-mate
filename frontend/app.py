@@ -99,7 +99,10 @@ __SPEAK_FN__
       
       c.addEventListener('focus',()=>{
         const title=c.querySelector('.feature-title').innerText.trim();
-        speak(title + ' 기능을 선택했습니다. 엔터를 누르면 시작합니다.');
+        if(title.includes('녹음')) speak('첫번째 버튼, 강의 녹음 분석입니다. 엔터를 누르면 시작합니다.');
+        else if(title.includes('자료')) speak('두번째 버튼, 강의 자료 분석입니다. 엔터를 누르면 시작합니다.');
+        else if(title.includes('목소리')) speak('세번째 버튼, 내 목소리 설정입니다. 엔터를 누르면 시작합니다.');
+        else speak(title + ' 기능을 선택했습니다. 엔터를 누르면 시작합니다.');
       });
       c.addEventListener('click', ()=>{
         const btn = c.closest('[data-testid="stVerticalBlock"]').querySelector('button');
@@ -118,9 +121,9 @@ __SPEAK_FN__
       if(b._rmA)return; b._rmA=true;
       b.addEventListener('focus',()=>{
         const t=b.innerText.trim();
-        if(t.includes('1번')) speak('첫번째 기능, 강의 녹음 분석입니다. 엔터를 누르면 시작합니다.');
-        else if(t.includes('2번')) speak('두번째 기능, 강의 자료 분석입니다. 엔터를 누르면 시작합니다.');
-        else if(t.includes('3번')) speak('세번째 기능, 내 목소리 설정입니다. 엔터를 누르면 시작합니다.');
+        if(t.includes('1번')) speak('첫번째 버튼, 강의 녹음 분석입니다. 엔터를 누르면 시작합니다.');
+        else if(t.includes('2번')) speak('두번째 버튼, 강의 자료 분석입니다. 엔터를 누르면 시작합니다.');
+        else if(t.includes('3번')) speak('세번째 버튼, 내 목소리 설정입니다. 엔터를 누르면 시작합니다.');
         else speak(t + ' 버튼입니다.');
       });
     });
@@ -130,21 +133,32 @@ __SPEAK_FN__
   function handleTab(e) {
     if (e.key !== 'Tab') return;
     const doc = window.parent.document;
-    const focusables = Array.from(doc.querySelectorAll('button, [tabindex="0"], input, textarea, select'))
-      .filter(el => el.offsetWidth > 0 && el.offsetHeight > 0);
+    
+    // 포커스 가능한 모든 요소 (Streamlit 내부)
+    const focusables = Array.from(doc.querySelectorAll('button, [tabindex="0"], input, textarea, select, a, [contenteditable="true"]'))
+      .filter(el => {
+        // 보이지 않는 요소 제외
+        if (el.offsetWidth <= 0 && el.offsetHeight <= 0) return false;
+        if (window.parent.getComputedStyle(el).display === 'none') return false;
+        if (window.parent.getComputedStyle(el).visibility === 'hidden') return false;
+        return true;
+      });
     
     if (focusables.length === 0) return;
     
     const first = focusables[0];
     const last = focusables[focusables.length - 1];
+    const active = doc.activeElement;
     
     if (e.shiftKey) {
-      if (doc.activeElement === first) {
+      // Shift + Tab: 첫 번째 요소에서 마지막으로 이동
+      if (active === first || !focusables.includes(active)) {
         last.focus();
         e.preventDefault();
       }
     } else {
-      if (doc.activeElement === last) {
+      // Tab: 마지막 요소에서 첫 번째로 이동
+      if (active === last || !focusables.includes(active)) {
         first.focus();
         e.preventDefault();
       }
@@ -160,7 +174,10 @@ __SPEAK_FN__
     document.getElementById('wake').style.display='none';
     document.getElementById('hint').style.display='block';
     
-    window.parent.document.addEventListener('keydown', handleTab);
+    if (!window.parent._rmTabHandler) {
+      window.parent._rmTabHandler = handleTab;
+      window.parent.document.addEventListener('keydown', window.parent._rmTabHandler);
+    }
 
     speak(
       '리드메이트입니다. 소리로 읽는 강의자료, 배움의 끝이 없도록 우리 함께 공부해요. 탭키를 눌러 버튼으로 이동하세요. 첫번째 버튼은 강의 녹음 분석, 두번째 버튼은 강의 자료 분석, 세번째 버튼은 내 목소리 설정입니다. 엔터 를 눌러 선택하세요.',

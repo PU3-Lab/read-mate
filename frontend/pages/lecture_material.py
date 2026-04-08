@@ -26,6 +26,7 @@ __SPEAK_FN__
   }, 500);
 
   function attachFocus(){
+    // 1. Buttons
     window.parent.document.querySelectorAll('button').forEach(b=>{
       if(b._rmA) return; b._rmA=true;
       b.addEventListener('focus', ()=>{
@@ -35,7 +36,55 @@ __SPEAK_FN__
         if(t.includes('분석 시작'))     speak('분석 시작 버튼입니다. 엔터를 눌러주세요.');
       });
     });
+
+    // 2. Feature Cards
+    window.parent.document.querySelectorAll('.feature-card').forEach(c=>{
+      if(c._rmA)return; c._rmA=true;
+      if(!c.getAttribute('tabindex')) c.setAttribute('tabindex', '0');
+      c.addEventListener('focus',()=>{
+        const title=c.querySelector('.feature-title').innerText.trim();
+        if(title.includes('파일 업로드')) speak('일번, 파일 업로드 버튼입니다. 엔터를 눌러주세요.');
+        else if(title.includes('카메라 촬영')) speak('이번, 카메라 촬영 버튼입니다. 엔터를 눌러주세요.');
+        else speak(title + ' 모드를 선택했습니다. 엔터를 누르면 시작합니다.');
+      });
+      c.addEventListener('click', ()=>{
+        const btn = c.closest('[data-testid="stVerticalBlock"]').querySelector('button');
+        if(btn) btn.click();
+      });
+      c.addEventListener('keydown', (e)=>{
+        if(e.key==='Enter'){
+          const btn = c.closest('[data-testid="stVerticalBlock"]').querySelector('button');
+          if(btn) btn.click();
+        }
+      });
+    });
   }
+
+  // Focus Trapping
+  function handleTab(e) {
+    if (e.key !== 'Tab') return;
+    const doc = window.parent.document;
+    const focusables = Array.from(doc.querySelectorAll('button, [tabindex="0"], input, textarea, select, a'))
+      .filter(el => {
+        if (el.offsetWidth <= 0 && el.offsetHeight <= 0) return false;
+        if (window.parent.getComputedStyle(el).display === 'none') return false;
+        return true;
+      });
+    if (focusables.length === 0) return;
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    const active = doc.activeElement;
+    if (e.shiftKey) {
+      if (active === first || !focusables.includes(active)) { last.focus(); e.preventDefault(); }
+    } else {
+      if (active === last || !focusables.includes(active)) { first.focus(); e.preventDefault(); }
+    }
+  }
+  if (!window.parent._rmTabHandler) {
+    window.parent._rmTabHandler = handleTab;
+    window.parent.document.addEventListener('keydown', window.parent._rmTabHandler);
+  }
+
   const obs = new MutationObserver(attachFocus);
   obs.observe(window.parent.document.body, {childList:true, subtree:true});
   setTimeout(attachFocus, 800);
@@ -374,7 +423,7 @@ def render() -> None:
             with c1:
                 st.markdown(
                     """
-                <div class="feature-card">
+                <div class="feature-card" tabindex="0">
                   <div class="feature-icon">📁</div>
                   <div class="feature-title">파일 업로드</div>
                   <div class="feature-desc">PDF 또는 이미지 파일을<br>직접 올려 분석해요</div>
@@ -391,7 +440,7 @@ def render() -> None:
             with c2:
                 st.markdown(
                     """
-                <div class="feature-card">
+                <div class="feature-card" tabindex="0">
                   <div class="feature-icon">📷</div>
                   <div class="feature-title">카메라 촬영</div>
                   <div class="feature-desc">카메라로 문서를 촬영하면<br>바로 분석해드려요</div>
