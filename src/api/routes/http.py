@@ -10,7 +10,16 @@ import logging
 
 from fastapi import APIRouter, HTTPException, Request
 
-from api.schemas import LLMResponse, QARequest, SummarizeRequest
+from api.schemas import (
+    LLMResponse,
+    QARequest,
+    QuizEvaluateRequest,
+    QuizEvaluateResponse,
+    QuizItemSchema,
+    QuizRequest,
+    QuizResponse,
+    SummarizeRequest,
+)
 from models.schemas import TaskType
 
 logger = logging.getLogger(__name__)
@@ -74,5 +83,70 @@ def qa(req: QARequest, request: Request) -> LLMResponse:
         summary=result.summary,
         key_points=result.key_points,
         qa_answer=result.qa_answer,
+        engine=result.engine,
+    )
+
+
+@router.post('/quiz', response_model=QuizResponse)
+def quiz(req: QuizRequest, request: Request) -> QuizResponse:
+    """
+    요약 텍스트를 받아 퀴즈 10개를 생성해 반환한다.
+
+    Args:
+        req: 퀴즈 생성 요청 (summary)
+        request: FastAPI 요청 객체
+
+    Returns:
+        QuizResponse: 퀴즈 문항 목록과 엔진명
+    """
+    if not req.summary.strip():
+        raise HTTPException(status_code=422, detail='summary가 비어 있습니다.')
+
+    try:
+        result = request.app.state.quiz_llm.generate(req.summary, TaskType.QUIZ)
+    except Exception as exc:
+        logger.exception('[http] quiz failed')
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    quiz_items = [
+        QuizItemSchema(
+            question=item.question,
+            options=item.options,
+            answer_index=item.answer_index,
+        )
+        for item in (result.quiz or [])
+    ]
+    return QuizResponse(quiz=quiz_items, engine=result.engine)
+
+
+@router.post('/quiz/evaluate', response_model=QuizEvaluateResponse)
+def quiz_evaluate(req: QuizEvaluateRequest, request: Request) -> QuizEvaluateResponse:
+    """
+    사용자의 음성 답변을 채점하고 이유를 설명한다.
+
+    Args:
+        req: 채점 요청 (question, options, correct_index, user_answer)
+        request: FastAPI 요청 객체
+
+    Returns:
+        QuizEvaluateResponse: 정오 여부, 설명, 엔진명
+    """
+    if not req.user_answer.strip():
+        raise HTTPException(status_code=422, detail='user_answer가 비어 있습니다.')
+
+    try:
+        result = request.app.state.quiz_llm.evaluate_answer(
+            question=req.question,
+            options=req.options,
+            correct_index=req.correct_index,
+            user_answer=req.user_answer,
+        )
+    except Exception as exc:
+        logger.exception('[http] quiz/evaluate failed')
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    return QuizEvaluateResponse(
+        correct=result.correct,
+        explanation=result.explanation,
         engine=result.engine,
     )

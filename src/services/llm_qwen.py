@@ -14,7 +14,7 @@ import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from lib.utils.device import available_device
-from models.schemas import LLMResult, QuizItem, TaskType
+from models.schemas import LLMResult, QuizEvalResult, QuizItem, TaskType
 from services.llm_base import ChunkedLLM
 
 logger = logging.getLogger(__name__)
@@ -82,6 +82,8 @@ class QwenLLM(ChunkedLLM):
                 result = self._to_result(payload)
                 if task is TaskType.QA and not result.qa_answer:
                     raise ValueError('QA 태스크에서 qa_answer가 비어 있습니다.')
+                if task is TaskType.QUIZ and not result.quiz:
+                    raise ValueError('QUIZ 태스크에서 quiz가 비어 있습니다.')
                 return result
             except Exception as exc:
                 last_error = exc
@@ -182,15 +184,22 @@ class QwenLLM(ChunkedLLM):
             '}'
         )
 
-        task_instruction = (
-            '본문을 3~5문장으로 요약하고 핵심 포인트를 3개 이상 정리하세요.'
-            if task is TaskType.SUMMARIZE
-            else (
+        if task is TaskType.SUMMARIZE:
+            task_instruction = '본문을 3~5문장으로 요약하고 핵심 포인트를 3개 이상 정리하세요.'
+        elif task is TaskType.QUIZ:
+            task_instruction = (
+                '본문 내용을 기반으로 객관식 퀴즈 문제를 정확히 10개 생성하세요. '
+                '각 문제는 4개의 보기와 정답 인덱스(0~3)를 포함해야 합니다. '
+                'summary 필드에는 본문을 1~2문장으로 간략히 요약하고, '
+                'key_points 필드에는 핵심 키워드를 3개 이상 작성하세요. '
+                'quiz 필드에 반드시 10개의 문제를 작성하세요.'
+            )
+        else:
+            task_instruction = (
                 '질문에 대해 본문 근거만 사용해 답하세요. '
                 '답을 찾기 어려우면 모른다고 분명히 쓰세요. '
                 '반드시 qa_answer 필드에 답변을 작성하세요.'
             )
-        )
 
         retry_instruction = ''
         if attempt > 1:
@@ -210,7 +219,8 @@ class QwenLLM(ChunkedLLM):
             '- key_points는 중복 없이 작성합니다.\n'
             '- QA이면 qa_answer에 반드시 답변을 작성합니다.\n'
             '- QA가 아니면 qa_answer는 null로 둡니다.\n'
-            '- quiz는 현재 지원하지 않으면 null로 둡니다.\n'
+            '- QUIZ이면 quiz 필드에 반드시 10개의 문제를 작성합니다.\n'
+            '- QUIZ가 아니면 quiz는 null로 둡니다.\n'
             f'- 작업 지시: {task_instruction}{retry_instruction}\n\n'
             f'본문:\n{text}\n'
             f'{question_block}\n'
@@ -256,9 +266,27 @@ class QwenLLM(ChunkedLLM):
         generated_tokens = output[0][encoded['input_ids'].shape[1] :]
         return self.tokenizer.decode(generated_tokens, skip_special_tokens=True).strip()
 
+    def _sanitize_json(self, text: str) -> str:
+        """Qwen 출력의 흔한 JSON 오류를 수정한다."""
+        text = re.sub(r'```(?:json)?\s*', '', text)
+        text = re.sub(r'```', '', text).strip()
+
+        match = re.search(r'\{.*\}', text, re.DOTALL)
+        if match:
+            text = match.group(0)
+
+        text = re.sub(r'\bNone\b', 'null', text)
+        text = re.sub(r'\bTrue\b', 'true', text)
+        text = re.sub(r'\bFalse\b', 'false', text)
+        text = re.sub(r',\s*([\}\]])', r'\1', text)
+        text = re.sub(r"'([^']*)'", r'"\1"', text)
+
+        return text
+
     def _parse_json_output(self, raw_output: str) -> dict[str, Any]:
         """
         모델 출력에서 JSON 객체를 추출해 파싱한다.
+        파싱 실패 시 _sanitize_json으로 정제 후 재시도한다.
 
         Args:
             raw_output: 모델이 생성한 텍스트
@@ -266,17 +294,15 @@ class QwenLLM(ChunkedLLM):
         Returns:
             dict[str, Any]: 파싱된 JSON 딕셔너리
         """
-        try:
-            payload = json.loads(raw_output)
-        except json.JSONDecodeError:
-            match = re.search(r'\{.*\}', raw_output, re.DOTALL)
-            if not match:
-                raise ValueError('JSON 객체를 찾지 못했습니다.') from None
-            payload = json.loads(match.group(0))
+        for candidate in (raw_output, self._sanitize_json(raw_output)):
+            try:
+                payload = json.loads(candidate)
+                if isinstance(payload, dict):
+                    return payload
+            except json.JSONDecodeError:
+                continue
 
-        if not isinstance(payload, dict):
-            raise TypeError('LLM JSON 응답은 객체여야 합니다.')
-        return payload
+        raise ValueError('JSON 객체를 파싱하지 못했습니다.')
 
     def _to_result(self, payload: dict[str, Any]) -> LLMResult:
         """
@@ -374,3 +400,39 @@ class QwenLLM(ChunkedLLM):
             quiz=None,
             engine=self.model_name,
         )
+
+    def evaluate_answer(
+        self,
+        question: str,
+        options: list[str],
+        correct_index: int,
+        user_answer: str,
+    ) -> QuizEvalResult:
+        """사용자의 음성 답변을 채점하고 이유를 설명한다."""
+        correct_option = options[correct_index] if 0 <= correct_index < len(options) else ''
+        options_text = '\n'.join(f'{i + 1}번. {opt}' for i, opt in enumerate(options))
+        prompt = (
+            '다음 퀴즈 문제에서 사용자의 음성 답변이 정답인지 평가하세요.\n\n'
+            f'문제: {question}\n'
+            f'보기:\n{options_text}\n'
+            f'정답: {correct_index + 1}번. {correct_option}\n'
+            f'사용자 답변: "{user_answer}"\n\n'
+            '사용자의 답변이 정답 번호나 정답 내용과 일치하는지 판단하고 이유를 설명하세요.\n'
+            '항상 한국어로 답하고, JSON 객체 하나만 반환하세요.\n'
+            '반환 형식: {"correct": true 또는 false, "explanation": "한국어 설명 (2~3문장)"}'
+        )
+        try:
+            raw = self._run_inference(prompt)
+            payload = self._parse_json_output(raw)
+            return QuizEvalResult(
+                correct=bool(payload.get('correct', False)),
+                explanation=str(payload.get('explanation', '평가를 생성하지 못했습니다.')).strip(),
+                engine=self.model_name,
+            )
+        except Exception as exc:
+            logger.warning('[llm:qwen] evaluate_answer failed: %s', exc)
+            return QuizEvalResult(
+                correct=False,
+                explanation='채점 중 오류가 발생했습니다.',
+                engine=self.model_name,
+            )

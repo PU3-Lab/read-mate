@@ -19,7 +19,7 @@ from core.config import (
     LLM_MODEL_API,
     OPENAI_API_KEY,
 )
-from models.schemas import LLMResult, QuizItem, TaskType
+from models.schemas import LLMResult, QuizEvalResult, QuizItem, TaskType
 from services.llm_base import ChunkedLLM
 
 logger = logging.getLogger(__name__)
@@ -78,6 +78,8 @@ class OpenAILLM(ChunkedLLM):
                 result = self._to_result(payload)
                 if task is TaskType.QA and not result.qa_answer:
                     raise ValueError('QA 태스크에서 qa_answer가 비어 있습니다.')
+                if task is TaskType.QUIZ and not result.quiz:
+                    raise ValueError('QUIZ 태스크에서 quiz가 비어 있습니다.')
                 return result
             except Exception as exc:
                 last_error = exc
@@ -121,15 +123,22 @@ class OpenAILLM(ChunkedLLM):
             '}'
         )
 
-        task_instruction = (
-            '본문을 3~5문장으로 요약하고 핵심 포인트를 3개 이상 정리하세요.'
-            if task is TaskType.SUMMARIZE
-            else (
+        if task is TaskType.SUMMARIZE:
+            task_instruction = '본문을 3~5문장으로 요약하고 핵심 포인트를 3개 이상 정리하세요.'
+        elif task is TaskType.QUIZ:
+            task_instruction = (
+                '본문 내용을 기반으로 객관식 퀴즈 문제를 정확히 10개 생성하세요. '
+                '각 문제는 4개의 보기와 정답 인덱스(0~3)를 포함해야 합니다. '
+                'summary 필드에는 본문을 1~2문장으로 간략히 요약하고, '
+                'key_points 필드에는 핵심 키워드를 3개 이상 작성하세요. '
+                'quiz 필드에 반드시 10개의 문제를 작성하세요.'
+            )
+        else:
+            task_instruction = (
                 '질문에 대해 본문 근거만 사용해 답하세요. '
                 '답을 찾기 어려우면 모른다고 분명히 쓰세요. '
                 '반드시 qa_answer 필드에 답변을 작성하세요.'
             )
-        )
 
         retry_instruction = (
             '\n이전 응답은 JSON 파싱에 실패했습니다. '
@@ -151,7 +160,8 @@ class OpenAILLM(ChunkedLLM):
             '- key_points는 중복 없이 작성합니다.\n'
             '- QA이면 qa_answer에 반드시 답변을 작성합니다.\n'
             '- QA가 아니면 qa_answer는 null로 둡니다.\n'
-            '- quiz는 현재 지원하지 않으면 null로 둡니다.\n'
+            '- QUIZ이면 quiz 필드에 반드시 10개의 문제를 작성합니다.\n'
+            '- QUIZ가 아니면 quiz는 null로 둡니다.\n'
             f'- 작업 지시: {task_instruction}{retry_instruction}\n\n'
             f'본문:\n{text}\n'
             f'{question_block}\n'
@@ -300,3 +310,60 @@ class OpenAILLM(ChunkedLLM):
             quiz=None,
             engine=self.model_name,
         )
+
+    def evaluate_answer(
+        self,
+        question: str,
+        options: list[str],
+        correct_index: int,
+        user_answer: str,
+    ) -> QuizEvalResult:
+        """
+        사용자의 음성 답변을 채점하고 이유를 설명한다.
+
+        Args:
+            question: 퀴즈 문제 텍스트
+            options: 보기 목록
+            correct_index: 정답 인덱스 (0-based)
+            user_answer: 사용자 음성 인식 텍스트
+
+        Returns:
+            QuizEvalResult: 정오 여부, 설명
+        """
+        correct_option = options[correct_index] if 0 <= correct_index < len(options) else ''
+        options_text = '\n'.join(f'{i + 1}번. {opt}' for i, opt in enumerate(options))
+        prompt = (
+            '다음 퀴즈 문제에서 사용자의 음성 답변이 정답인지 평가하세요.\n\n'
+            f'문제: {question}\n'
+            f'보기:\n{options_text}\n'
+            f'정답: {correct_index + 1}번. {correct_option}\n'
+            f'사용자 답변: "{user_answer}"\n\n'
+            '사용자의 답변이 정답 번호나 정답 내용과 일치하는지 판단하고 이유를 설명하세요.\n'
+            '항상 한국어로 답하고, JSON 객체 하나만 반환하세요.\n'
+            '반환 형식: {"correct": true 또는 false, "explanation": "한국어 설명 (2~3문장)"}'
+        )
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model_name,
+                messages=[
+                    {'role': 'system', 'content': '당신은 JSON만 반환하는 퀴즈 채점 도우미입니다.'},
+                    {'role': 'user', 'content': prompt},
+                ],
+                max_tokens=300,
+                temperature=0,
+                response_format={'type': 'json_object'},
+            )
+            raw = (response.choices[0].message.content or '').strip()
+            payload = self._parse_json_output(raw)
+            return QuizEvalResult(
+                correct=bool(payload.get('correct', False)),
+                explanation=str(payload.get('explanation', '평가를 생성하지 못했습니다.')).strip(),
+                engine=self.model_name,
+            )
+        except Exception as exc:
+            logger.warning('[openai-llm] evaluate_answer failed: %s', exc)
+            return QuizEvalResult(
+                correct=False,
+                explanation='채점 중 오류가 발생했습니다.',
+                engine=self.model_name,
+            )

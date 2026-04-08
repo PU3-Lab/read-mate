@@ -1,7 +1,37 @@
 import base64
+import logging
+import os
 
+import requests
 import streamlit as st
-from speak_js import get_announcement_token, make_speak_fn
+from speak_js import get_announcement_token, get_server_url, make_speak_fn
+
+logger = logging.getLogger(__name__)
+
+_SERVER_URL = os.getenv('LLM_SERVER_URL', get_server_url()).rstrip('/')
+
+
+def _fetch_quiz(summary: str) -> list[dict]:
+    """LLM 서버에 퀴즈 생성을 요청하고 퀴즈 목록을 반환한다."""
+    try:
+        resp = requests.post(
+            f'{_SERVER_URL}/api/quiz',
+            json={'summary': summary},
+            timeout=120,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        return [
+            {
+                'q': item['question'],
+                'options': item['options'],
+                'answer': item['answer_index'],
+            }
+            for item in data.get('quiz', [])
+        ]
+    except Exception as exc:
+        logger.warning('[summary_panel] quiz fetch failed: %s', exc)
+        return []
 
 
 def _sync_summary_play_state(
@@ -126,6 +156,9 @@ def render_summary_panel():
             st.rerun()
     with c3:
         if st.button('퀴즈', use_container_width=True, key='sum_p'):
+            if not st.session_state.get('quiz'):
+                with st.spinner('퀴즈 생성 중...'):
+                    st.session_state.quiz = _fetch_quiz(summary)
             st.session_state.active_panel = 'quiz'
             st.rerun()
 
@@ -133,16 +166,8 @@ def render_summary_panel():
     kw = ', '.join(keywords) if keywords else ''
     s = summary.replace('\\', '\\\\').replace("'", "\\'").replace('\n', ' ')
     k = kw.replace("'", "\\'")
-    keyboard_help = (
-        'Q키를 누르면 질의응답, P키를 누르면 퀴즈, R키을 누르면 다시 듣기입니다.'
-        if has_quiz
-        else 'Q키를 누르면 질의응답, R키을 누르면 다시 듣기입니다.'
-    )
-    quiz_key_action = (
-        "speak('퀴즈로 이동합니다.', ()=>goTo('quiz'));"
-        if has_quiz
-        else "speak('현재 퀴즈가 준비되지 않았습니다.');"
-    )
+    keyboard_help = 'Q키를 누르면 질의응답, P키를 누르면 퀴즈, R키을 누르면 다시 듣기입니다.'
+    quiz_key_action = "speak('퀴즈로 이동합니다.', ()=>goTo('quiz'));"
     play_token = int(st.session_state.get('summary_play_token', 0))
     audio_src = (
         f'data:{audio_mime};base64,{base64.b64encode(audio).decode()}'

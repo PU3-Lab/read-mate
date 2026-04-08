@@ -9,7 +9,7 @@ import logging
 
 from api.client import LLMClient
 from core.config import LLM_SERVER_URL
-from models.schemas import LLMResult, TaskType
+from models.schemas import LLMResult, QuizEvalResult, TaskType
 from services.base import BaseLLM
 
 logger = logging.getLogger(__name__)
@@ -59,15 +59,55 @@ class RemoteLLM(BaseLLM):
         try:
             if task is TaskType.QA:
                 response = self.client.qa(text, question)
+                return LLMResult(
+                    summary=response.summary,
+                    key_points=response.key_points,
+                    qa_answer=response.qa_answer,
+                    engine=response.engine,
+                )
+            elif task is TaskType.QUIZ:
+                quiz_response = self.client.quiz(text)
+                from models.schemas import QuizItem
+                return LLMResult(
+                    summary='',
+                    key_points=[],
+                    quiz=[
+                        QuizItem(
+                            question=item.question,
+                            options=item.options,
+                            answer_index=item.answer_index,
+                        )
+                        for item in quiz_response.quiz
+                    ],
+                    engine=quiz_response.engine,
+                )
             else:
                 response = self.client.summarize(text)
+                return LLMResult(
+                    summary=response.summary,
+                    key_points=response.key_points,
+                    qa_answer=response.qa_answer,
+                    engine=response.engine,
+                )
         except Exception as exc:
             logger.exception('[remote-llm] request failed')
             raise RuntimeError(f'LLM 서버 호출 실패: {exc}') from exc
 
-        return LLMResult(
-            summary=response.summary,
-            key_points=response.key_points,
-            qa_answer=response.qa_answer,
-            engine=response.engine,
-        )
+    def evaluate_answer(
+        self,
+        question: str,
+        options: list[str],
+        correct_index: int,
+        user_answer: str,
+    ) -> QuizEvalResult:
+        """사용자의 음성 답변을 채점하고 이유를 설명한다."""
+        try:
+            response = self.client.evaluate_quiz(question, options, correct_index, user_answer)
+            return QuizEvalResult(
+                correct=response.correct,
+                explanation=response.explanation,
+                engine=response.engine,
+            )
+        except Exception as exc:
+            logger.exception('[remote-llm] evaluate_answer failed')
+            raise RuntimeError(f'LLM 서버 호출 실패: {exc}') from exc

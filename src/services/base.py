@@ -12,6 +12,7 @@ from models.schemas import (
     LLMResult,
     OCRResult,
     PDFResult,
+    QuizEvalResult,
     STTResult,
     TaskType,
     TTSResult,
@@ -82,11 +83,33 @@ class BaseLLM(ABC):
 
         Args:
             text: 분석할 원문 텍스트
-            task: SUMMARIZE | QA
+            task: SUMMARIZE | QA | QUIZ
             question: QA 태스크일 때 사용자 질문
 
         Returns:
             LLMResult: 요약, 핵심 정리, 질의응답 답변 등
+        """
+        ...
+
+    @abstractmethod
+    def evaluate_answer(
+        self,
+        question: str,
+        options: list[str],
+        correct_index: int,
+        user_answer: str,
+    ) -> QuizEvalResult:
+        """
+        사용자의 음성 답변을 채점하고 이유를 설명한다.
+
+        Args:
+            question: 퀴즈 문제 텍스트
+            options: 보기 목록
+            correct_index: 정답 인덱스 (0-based)
+            user_answer: 사용자 음성 인식 텍스트
+
+        Returns:
+            QuizEvalResult: 정오 여부, 설명
         """
         ...
 
