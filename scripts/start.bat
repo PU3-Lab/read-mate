@@ -33,7 +33,7 @@ echo   앱       : http://localhost:%APP_PORT%
 if defined LLM_ENGINE (
     echo   엔진     : %LLM_ENGINE%
 ) else (
-    echo   엔진     : gemma (기본)
+    echo   엔진     : openai (기본)
 )
 echo ==========================================
 echo.

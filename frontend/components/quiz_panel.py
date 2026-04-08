@@ -113,7 +113,7 @@ body{{background:transparent;font-family:'Gowun Dodum',sans-serif;}}
     return String(n);
   }}
 
-  {make_speak_fn()}
+  {make_speak_fn(allow_generation=True)}
 
   function speakQ(arr,i,cb){{
     if(i>=arr.length){{if(cb)cb();return;}}
@@ -236,8 +236,8 @@ body{{background:transparent;font-family:'Gowun Dodum',sans-serif;}}
   setTimeout(()=>{{
     speakQ([
       `총 ${{numNative(Q.length)}} 문제입니다.`,
-      '숫자키 1부터 4로 보기를 선택하고 Enter 로 제출하세요.',
-      'L 로 문제 다시 듣기, C 로 선택 확인, Backspace 로 요약으로 돌아갑니다.',
+      '숫자키 1부터 4로 보기를 선택하고 엔터로 제출하세요.',
+      '엘키 로 문제 다시 듣기, 씨키 로 선택 확인, 백스페이스 로 요약으로 돌아갑니다.',
       '지금부터 시작합니다.'
     ], 0, ()=>setTimeout(renderQ,400));
   }},400);

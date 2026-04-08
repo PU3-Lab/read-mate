@@ -1,0 +1,1 @@
+오류: LLM 서버 호출 실패: HTTPConnectionPool(host='localhost', port=8000): Read timed out. (read timeout=120.0)

@@ -21,7 +21,56 @@ class StaticTTSAudio:
 
 def normalize_tts_text(text: str) -> str:
     """Collapse whitespace so minor formatting differences still match."""
-    return ' '.join(text.split())
+    t = text.lower()
+    t = t.replace('backspace', '백스페이스')
+    t = t.replace('space', '스페이스')
+    t = t.replace('enter', '엔터')
+    t = t.replace('tab', '탭')
+    return ' '.join(t.split())
+
+
+_TEXT_ALIASES: dict[str, str] = {
+    normalize_tts_text(
+        '리드메이트입니다. 소리로 읽는 강의자료, 배움의 끝이 없도록 우리 함께 공부해요. Tab키를 눌러 버튼으로 이동하세요. 첫번째 버튼은 강의 녹음 분석, 두번째 버튼은 강의 자료 분석, 세번째 버튼은 내 목소리 설정입니다. Enter 를 눌러 선택하세요.'
+    ): normalize_tts_text(
+        '리드메이트입니다. 소리로 읽는 강의자료, 배움의 끝이 없도록 우리 함께 공부해요. 탭키를 눌러 버튼으로 이동하세요. 첫번째 버튼은 강의 녹음 분석, 두번째 버튼은 강의 자료 분석, 세번째 버튼은 내 목소리 설정입니다. 엔터 를 눌러 선택하세요.'
+    ),
+    normalize_tts_text(
+        '첫번째 버튼, 강의 녹음 분석입니다. Enter 를 누르면 시작합니다.'
+    ): normalize_tts_text(
+        '첫번째 버튼, 강의 녹음 분석입니다. 엔터를 누르면 시작합니다.'
+    ),
+    normalize_tts_text(
+        '두번째 버튼, 강의 자료 분석입니다. Enter 를 누르면 시작합니다.'
+    ): normalize_tts_text(
+        '두번째 버튼, 강의 자료 분석입니다. 엔터를 누르면 시작합니다.'
+    ),
+    normalize_tts_text(
+        '세번째 버튼, 내 목소리 설정입니다. Enter 를 누르면 시작합니다.'
+    ): normalize_tts_text(
+        '세번째 버튼, 내 목소리 설정입니다. 엔터를 누르면 시작합니다.'
+    ),
+    normalize_tts_text(
+        '내 목소리 설정입니다. 화자 이름을 입력하고, WAV 파일을 업로드한 뒤 등록 버튼을 눌러주세요.'
+    ): normalize_tts_text(
+        '내 목소리 설정입니다. 화자 이름을 입력하고, 오디오 파일을 업로드한 뒤 등록 버튼을 눌러주세요.'
+    ),
+    normalize_tts_text(
+        '녹음이 중지되었습니다. 전송하기 버튼을 누르세요.'
+    ): normalize_tts_text(
+        '녹음이 중지되었습니다. 엔터를 눌러 전송하세요.'
+    ),
+    normalize_tts_text(
+        '질의응답 화면입니다. Space 를 눌러 질문을 하고, 다시 Space 로 중지한 뒤 Enter 로 전송하세요. Backspace 를 누르면 요약화면 으로 돌아갑니다.'
+    ): normalize_tts_text(
+        '질의응답 화면입니다. 스페이스키 를 눌러 질문을 하고, 다시 스페이크키 로 중지한 뒤 엔터키 로 전송하세요. 백스페이스 를 누르면 요약화면 으로 돌아갑니다.'
+    ),
+    normalize_tts_text(
+        '1번, 파일 업로드 버튼입니다. Enter 를 눌러주세요.'
+    ): normalize_tts_text(
+        '일번, 파일 업로드 버튼입니다. 엔터를 눌러주세요.'
+    ),
+}
 
 
 class StaticTTSAudioCache:
@@ -38,6 +87,7 @@ class StaticTTSAudioCache:
     def find_audio(self, text: str, voice_name: str | None = None) -> StaticTTSAudio | None:
         """Return a matching static audio file when one is registered."""
         normalized_text = normalize_tts_text(text)
+        normalized_text = _TEXT_ALIASES.get(normalized_text, normalized_text)
         if not normalized_text:
             return None
 

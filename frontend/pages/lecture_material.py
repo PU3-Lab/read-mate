@@ -21,11 +21,7 @@ __SPEAK_FN__
 
   setTimeout(()=>{
     speak(
-      '강의 자료 분석입니다. ' +
-      '1번, 파일 업로드. ' +
-      '2번, 카메라 촬영. ' +
-      '숫자키 1 또는 2를 눌러 선택하세요. ' +
-      'Backspace 를 누르면 홈으로 돌아갑니다.'
+      '강의 자료 분석입니다. 1번, 파일 업로드. 2번, 카메라 촬영. 숫자키 1 또는 2를 눌러 선택하세요. 백스페이스 를 누르면 홈으로 돌아갑니다.'
     );
   }, 500);
 
@@ -34,9 +30,9 @@ __SPEAK_FN__
       if(b._rmA) return; b._rmA=true;
       b.addEventListener('focus', ()=>{
         const t = b.innerText.trim();
-        if(t.includes('파일 업로드'))   speak('1번, 파일 업로드 버튼입니다. Enter 를 눌러주세요.');
-        if(t.includes('카메라 촬영'))   speak('2번, 카메라 촬영 버튼입니다. Enter 를 눌러주세요.');
-        if(t.includes('분석 시작'))     speak('분석 시작 버튼입니다. Enter 를 눌러주세요.');
+        if(t.includes('파일 업로드'))   speak('일번, 파일 업로드 버튼입니다. 엔터를 눌러주세요.');
+        if(t.includes('카메라 촬영'))   speak('이번, 카메라 촬영 버튼입니다. 엔터를 눌러주세요.');
+        if(t.includes('분석 시작'))     speak('분석 시작 버튼입니다. 엔터를 눌러주세요.');
       });
     });
   }
@@ -80,9 +76,7 @@ __SPEAK_FN__
 
   setTimeout(()=>{
     speak(
-      '파일 업로드 모드입니다. ' +
-      'Tab 키를 눌러 파일 선택 버튼으로 이동하세요. ' +
-      'Backspace 를 누르면 모드 선택으로 돌아갑니다.'
+      '파일 업로드 모드입니다. 탭 키를 눌러 파일 선택 버튼으로 이동하세요. 백스페이스 를 누르면 모드 선택으로 돌아갑니다.'
     );
   }, 400);
 
@@ -93,7 +87,7 @@ __SPEAK_FN__
     if(!fname) return;
     announced = true;
     const name = fname.textContent.trim();
-    speak(`${name} 파일이 선택되었습니다. Tab 키를 눌러 분석 시작 버튼으로 이동한 뒤 Enter 를 눌러주세요.`, ()=>{
+    speak(`${name} 파일이 선택되었습니다. 탭 키를 눌러 분석 시작 버튼으로 이동한 뒤 엔터를 눌러주세요.`, ()=>{
       const btns = window.parent.document.querySelectorAll('button');
       for(const b of btns){ if(b.innerText.includes('분석 시작')){ b.focus(); break; } }
     });
@@ -105,7 +99,7 @@ __SPEAK_FN__
       if(b._rmA) return; b._rmA=true;
       b.addEventListener('focus', ()=>{
         const t = b.innerText.trim();
-        if(t.includes('분석 시작')) speak('분석 시작 버튼입니다. Enter 를 눌러주세요.');
+        if(t.includes('분석 시작')) speak('분석 시작 버튼입니다. 엔터를 눌러주세요.');
         if(t.includes('모드 선택')) speak('모드 선택으로 돌아가기 버튼입니다.');
       });
     });
@@ -204,7 +198,7 @@ __SPEAK_FN__
       });
       vid.srcObject = stream;
       status.textContent = '📷 문서를 화면에 맞춰주세요';
-      speak('카메라가 준비되었습니다. 문서를 화면 가득 채운 뒤 Space 를 눌러 촬영하세요.');
+      speak('카메라가 준비되었습니다. 문서를 화면 가득 채운 뒤 스페이스를 눌러 촬영하세요.');
     }catch(err){
       status.textContent = '⚠️ 카메라 접근이 거부되었습니다.';
       speak('카메라 접근이 거부되었습니다. 브라우저에서 카메라 권한을 허용한 뒤 다시 시도해주세요.');
@@ -225,7 +219,7 @@ __SPEAK_FN__
     use.style.display   = '';
     captured = true;
     status.textContent = '촬영 완료! 이미지를 확인하세요.';
-    speak('촬영되었습니다. Enter 를 누르면 분석을 시작합니다. R 을 누르면 다시 촬영합니다.');
+    speak('촬영되었습니다. 엔터를 누르면 분석을 시작합니다. 알을 누르면 다시 촬영합니다.');
     window.parent.postMessage({type:'rm_camera', dataUrl:dataUrl}, '*');
   }
 
@@ -237,12 +231,12 @@ __SPEAK_FN__
     use.style.display   = 'none';
     captured = false;
     status.textContent = '📷 문서를 화면에 맞춰주세요';
-    speak('다시 촬영합니다. 문서를 화면에 맞추고 Space 를 눌러 촬영하세요.');
+    speak('다시 촬영합니다. 문서를 화면에 맞추고 스페이스를 눌러 촬영하세요.');
     window.parent.postMessage({type:'rm_camera', dataUrl:null}, '*');
   }
 
   function doUse(){
-    speak('분석을 시작합니다. 잠시 기다려주세요.');
+    speak('분석을 시작합니다. 잠시만 기다려 주세요');
     window.parent.postMessage({type:'rm_camera_confirm'}, '*');
   }
 
@@ -319,11 +313,11 @@ def _camera_result_js() -> str:
 <script>
 (function(){{
   {make_speak_fn()}
-  setTimeout(()=>speak('촬영된 이미지입니다. Enter 로 분석을 시작하거나 R 로 다시 촬영하세요.'),400);
+  setTimeout(()=>speak('촬영된 이미지입니다. 엔터로 분석을 시작하거나 R키 로 다시 촬영하세요.'),400);
   function onKey(e){{
     const tag=e.target.tagName;
     if(tag==='INPUT'||tag==='TEXTAREA')return;
-    if(e.code==='Enter'){{e.preventDefault();speak('분석을 시작합니다.',()=>window.parent.postMessage({{type:'rm_cam_use'}},'*'));}}
+    if(e.code==='Enter'){{e.preventDefault();speak('분석을 시작합니다. 잠시만 기다려 주세요',()=>window.parent.postMessage({{type:'rm_cam_use'}},'*'));}}
     if(e.key.toLowerCase()==='r'){{speak('다시 촬영합니다.',()=>window.parent.postMessage({{type:'rm_cam_retry'}},'*'));}}
     if(e.key==='Backspace'){{e.preventDefault();speak('모드 선택으로 돌아갑니다.',()=>window.parent.postMessage({{type:'rm_cam_back'}},'*'));}}
   }}
@@ -479,7 +473,7 @@ def render() -> None:
                 if upload_data and st.button(
                     '분석 시작', use_container_width=True, key='run_upload'
                 ):
-                    _tts_notify('분석을 시작합니다. 잠시만 기다려주세요.')
+                    _tts_notify('분석을 시작합니다. 잠시만 기다려 주세요')
                     _queue_processing(upload_data['file_name'], upload_data['content'])
                     st.rerun()
 
@@ -522,7 +516,7 @@ def render() -> None:
                     if st.button(
                         '분석 시작 (Enter)', use_container_width=True, key='cam_use'
                     ):
-                        _tts_notify('분석을 시작합니다. 잠시만 기다려주세요.')
+                        _tts_notify('분석을 시작합니다. 잠시만 기다려 주세요')
                         _queue_processing('camera_capture.jpg', base64.b64decode(b64))
                         st.session_state.camera_image = None
                         st.rerun()
@@ -562,17 +556,15 @@ def render() -> None:
 
 
 def _tts_notify(msg: str) -> None:
-    """Python 단계 전환 시 브라우저 TTS로 안내 메시지를 재생한다."""
+    """Python 단계 전환 시 백엔드 TTS로 안내 메시지를 재생한다."""
+    speak_js_code = make_speak_fn()
     safe = msg.replace("'", "\\'")
     st.iframe(
         f"""
 <script>
 (function(){{
-  if(!window.speechSynthesis) return;
-  window.speechSynthesis.cancel();
-  const u = new SpeechSynthesisUtterance('{safe}');
-  u.lang = 'ko-KR'; u.rate = 1.0;
-  window.speechSynthesis.speak(u);
+{speak_js_code}
+  speak('{safe}');
 }})();
 </script>
 """,
@@ -638,9 +630,9 @@ def _queue_processing(file_name: str, content: bytes) -> None:
 
 # ── 진행 메시지별 TTS 문구 매핑 ─────────────────────────
 _PROGRESS_TTS: dict[str, str] = {
-    'OCR': '잠시만 기다려주세요. 로딩 중입니다.',
-    'LLM': '잠시만 기다려주세요. 로딩 중입니다.',
-    'TTS': '잠시만 기다려주세요. 로딩 중입니다.',
+    'OCR': '잠시만 기다려 주세요',
+    'LLM': '잠시만 기다려 주세요',
+    'TTS': '잠시만 기다려 주세요',
 }
 _last_tts_msg: dict = {}  # fragment 재진입마다 중복 재생 방지
 
@@ -665,7 +657,7 @@ def _render_processing_status(job_id: str):
         # 단계가 바뀔 때 TTS 문구 결정
         tts_msg = next(
             (v for k, v in _PROGRESS_TTS.items() if k in current_msg),
-            '잠시만 기다려주세요. 로딩 중입니다.',
+            '잠시만 기다려 주세요',
         )
         step_changed = _last_tts_msg.get(job_id) != tts_msg
         if step_changed:
@@ -673,12 +665,11 @@ def _render_processing_status(job_id: str):
 
         safe_msg = tts_msg.replace("'", "\\'")
         # step_changed 이면 즉시 1회 재생 후 interval 시작
-        # 아니면 interval만 유지 (페이지 재진입 시 interval이 끊기므로 항상 재등록)
         st.iframe(
             f"""
 <script>
 (function() {{
-  if (!window.speechSynthesis) return;
+  {make_speak_fn()}
 
   // 이전 interval 제거 (fragment 재진입마다 새로 등록)
   if (window._rmTtsInterval) {{
@@ -686,20 +677,11 @@ def _render_processing_status(job_id: str):
     window._rmTtsInterval = null;
   }}
 
-  function speak() {{
-    if (!window.speechSynthesis) return;
-    window.speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance('{safe_msg}');
-    u.lang = 'ko-KR';
-    u.rate = 1.0;
-    window.speechSynthesis.speak(u);
-  }}
-
   // 단계 변경 시 즉시 1회 재생
-  {'speak();' if step_changed else ''}
+  {'speak("' + safe_msg + '");' if step_changed else ''}
 
   // 8초마다 반복 재생
-  window._rmTtsInterval = setInterval(speak, 8000);
+  window._rmTtsInterval = setInterval(() => speak('{safe_msg}'), 8000);
 }})();
 </script>
 """,

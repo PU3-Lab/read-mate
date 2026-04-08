@@ -16,18 +16,11 @@ body{background:transparent;font-family:'Gowun Dodum',sans-serif;}
 @keyframes pulse{0%,100%{transform:scale(1);opacity:1;}50%{transform:scale(1.15);opacity:.7;}}
 #status{font-size:1rem;font-weight:800;color:#3d2f24;margin-bottom:.3rem;}
 #hint{font-size:.78rem;color:#b09a88;font-weight:700;line-height:1.8;margin-bottom:1rem;}
-#qbox{
-  background:#fff;border:1.5px solid #f0e0cc;border-radius:14px;
-  padding:.8rem 1rem;font-size:.9rem;font-weight:700;color:#3d2f24;
-  text-align:left;line-height:1.7;min-height:50px;
-  white-space:pre-wrap;word-break:break-all;
-  display:none;margin-bottom:.8rem;
-}
 #send-btn{
   background:linear-gradient(135deg,#ff7e5f,#f9a03f);color:#fff;
   border:none;border-radius:50px;padding:.6rem 0;
   font-size:.9rem;font-weight:700;cursor:pointer;width:100%;
-  box-shadow:0 3px 10px rgba(255,126,95,.3);display:none;
+  box-shadow:0 3px 10px rgba(255,126,95,.3);
 }
 #send-btn:hover{opacity:.88;}
 </style>
@@ -35,7 +28,6 @@ body{background:transparent;font-family:'Gowun Dodum',sans-serif;}
   <div id="icon">🎤</div>
   <div id="status">Space 를 눌러 질문을 말씀하세요</div>
   <div id="hint">Space : 녹음 시작/중지 &nbsp;|&nbsp; Enter : 전송 &nbsp;|&nbsp; Backspace : 요약으로</div>
-  <div id="qbox" aria-live="polite"></div>
   <button id="send-btn">질문 전송 (Enter)</button>
 </div>
 <script>
@@ -45,11 +37,50 @@ body{background:transparent;font-family:'Gowun Dodum',sans-serif;}
 
   const icon   = document.getElementById('icon');
   const status = document.getElementById('status');
-  const hint   = document.getElementById('hint');
-  const qbox   = document.getElementById('qbox');
   const btn    = document.getElementById('send-btn');
 
   __SPEAK_FN__
+
+  function findParentTextarea(){
+    const doc = window.parent.document;
+    return (
+      doc.querySelector('textarea[data-rmqa-visible="1"]')
+      || doc.querySelector('textarea[aria-label="qa_text"]')
+      || doc.querySelector('textarea[placeholder="질문을 말씀하시거나 직접 입력하세요"]')
+    );
+  }
+
+  function setParentTextareaValue(value){
+    const textarea = findParentTextarea();
+    if(!textarea) return '';
+    const setter = Object.getOwnPropertyDescriptor(
+      window.parent.HTMLTextAreaElement.prototype,
+      'value'
+    )?.set;
+    if(setter){
+      setter.call(textarea, value);
+    } else {
+      textarea.value = value;
+    }
+    textarea.dispatchEvent(new Event('input', {bubbles:true}));
+    textarea.dispatchEvent(new Event('change', {bubbles:true}));
+    return textarea.value || '';
+  }
+
+  function getParentTextareaValue(){
+    const textarea = findParentTextarea();
+    return textarea ? (textarea.value || '') : '';
+  }
+
+  function findParentSendButton(){
+    const doc = window.parent.document;
+    return (
+      doc.querySelector('button[data-rmqa-send="1"]')
+      || Array.from(doc.querySelectorAll('button')).find(
+        (button) => button.innerText && button.innerText.includes('전송하기')
+      )
+    );
+  }
 
   function initRec(){
     if(!SR)return;
@@ -60,7 +91,7 @@ body{background:transparent;font-family:'Gowun Dodum',sans-serif;}
         const t=e.results[i][0].transcript;
         e.results[i].isFinal?(transcript+=t):(interim+=t);
       }
-      qbox.textContent=transcript+(interim?'...'+interim:'');
+      transcript = setParentTextareaValue(transcript+(interim?' '+interim:''));
     };
     rec.onend=()=>{if(recording)rec.start();};
     rec.onerror=()=>{setIdle();speak('마이크 오류가 발생했습니다.');};
@@ -69,28 +100,44 @@ body{background:transparent;font-family:'Gowun Dodum',sans-serif;}
   function setIdle(){
     recording=false;
     icon.className='';icon.textContent='🎤';
-    status.textContent='Space 를 눌러 질문을 말씀하세요';
-    if(transcript){qbox.style.display='block';btn.style.display='block';hint.style.display='none';}
+    transcript = getParentTextareaValue().trim();
+    status.textContent=transcript.trim()
+      ? '질문을 확인한 뒤 전송하기 버튼을 누르세요'
+      : 'Space 를 눌러 질문을 말씀하세요';
   }
 
   function setRec(){
     recording=true;
     icon.className='pulse';icon.textContent='🔴';
     status.textContent='녹음 중... Space 로 중지';
-    qbox.style.display='block';btn.style.display='none';
   }
 
   function toggle(){
     if(!SR){speak('이 브라우저는 음성 인식을 지원하지 않습니다.');return;}
     if(!rec)initRec();
-    if(!recording){rec.start();setRec();speak('녹음을 시작합니다.');}
-    else{rec.stop();setIdle();speak('녹음이 중지되었습니다. Enter 를 눌러 전송하세요.');}
+    if(!recording){
+      transcript='';
+      setParentTextareaValue('');
+      rec.start();
+      setRec();
+      speak('녹음을 시작합니다.');
+    } else {
+      rec.stop();
+      setIdle();
+      speak('녹음이 중지되었습니다. 엔터를 눌러 전송하세요.');
+    }
   }
 
   function send(){
-    if(!transcript.trim()){speak('먼저 질문을 말씀해주세요.');return;}
+    const question=getParentTextareaValue().trim();
+    transcript=question;
+    if(!question){speak('먼저 질문을 말씀해주세요.');return;}
     speak('질문을 전송합니다. 잠시 기다려주세요.');
-    window.parent.postMessage({type:'rm_qa',question:transcript.trim()},'*');
+    setParentTextareaValue(question);
+    const button = findParentSendButton();
+    if(button){
+      setTimeout(() => button.click(), 50);
+    }
   }
 
   btn.addEventListener('click',send);
@@ -113,39 +160,46 @@ body{background:transparent;font-family:'Gowun Dodum',sans-serif;}
   try{window.parent.document.addEventListener('keydown',onKey);}catch(err){}
 
   setTimeout(()=>speak(
-    '질의응답 화면입니다. Space 를 눌러 질문을 하고, 다시 Space 로 중지한 뒤 Enter 로 전송하세요. Backspace 를 누르면 요약화면 으로 돌아갑니다.'
+    '질의응답 화면입니다. 스페이스키 를 눌러 질문을 하고, 다시 스페이크키 로 중지한 뒤 엔터키 로 전송하세요. 백스페이스 를 누르면 요약화면 으로 돌아갑니다.'
   ),400);
 })();
 </script>
 """
 
-_QA_BRIDGE_HTML = """
+_QA_DOM_BRIDGE_HTML = """
 <script>
-window.addEventListener('message', function(e){
-  if(!e.data || e.data.type!=='rm_qa' || !e.data.question) return;
-  const inputs = window.parent.document.querySelectorAll('input[type="text"]');
-  for(const input of inputs){
-    if(input.getAttribute('data-rmqa')){
-      input.value = e.data.question;
-      input.dispatchEvent(new Event('input', {bubbles:true}));
-      break;
-    }
-  }
-});
+(function(){
+  setInterval(() => {
+    try {
+      const doc = window.parent.document;
+
+      const textareas = doc.querySelectorAll('textarea');
+      for(const textarea of textareas){
+        if(textarea.getAttribute('aria-label') === 'qa_text'){
+          textarea.setAttribute('data-rmqa-visible', '1');
+        }
+      }
+
+      const buttons = doc.querySelectorAll('button');
+      for(const button of buttons){
+        if(button.innerText && button.innerText.includes('전송하기')){
+          button.setAttribute('data-rmqa-send', '1');
+        }
+      }
+    } catch (e) {}
+  }, 200);
+})();
 </script>
 """
 
 
 def render_qa_panel():
-    if 'qa_bridge' not in st.session_state:
-        st.session_state.qa_bridge = ''
-
-    if st.session_state.qa_bridge.strip():
-        st.session_state.qa_text = st.session_state.qa_bridge.strip()
-        queued_question = st.session_state.qa_bridge.strip()
-        st.session_state.qa_bridge = ''
-        _ask(queued_question)
-        return
+    """질의응답 패널을 렌더링한다."""
+    if 'qa_text' not in st.session_state:
+        st.session_state.qa_text = ''
+    if st.session_state.get('qa_clear_text'):
+        st.session_state.pop('qa_text', None)
+        st.session_state.qa_clear_text = False
 
     st.markdown(
         """
@@ -163,16 +217,15 @@ def render_qa_panel():
         )
         st.markdown(f'<div class="qa-ai">🤖 {item["a"]}</div>', unsafe_allow_html=True)
 
-    # 마지막 답변 자동 낭독
     if history and st.session_state.get('qa_new_answer'):
         ans = history[-1]['a'].replace("'", "\\'").replace('\n', ' ')
         st.iframe(
             f"""
 <script>
 (function(){{
-  {make_speak_fn()}
+  {make_speak_fn(allow_generation=True)}
   setTimeout(()=>speak('{ans}',()=>{{
-    setTimeout(()=>speak('다시 질문하려면 Space, 요약으로 돌아가려면 Backspace 를 눌러주세요.'),300);
+    setTimeout(()=>speak('다시 질문하려면 스페이스, 요약으로 돌아가려면 백스페이스 를 눌러주세요.'),300);
   }}),300);
 }})();
 </script>
@@ -181,45 +234,24 @@ def render_qa_panel():
         )
         st.session_state.qa_new_answer = False
 
-    st.iframe(_QA_HTML.replace('__SPEAK_FN__', make_speak_fn()), height=270)
-    st.iframe(_QA_BRIDGE_HTML, height=1)
+    st.iframe(_QA_HTML.replace('__SPEAK_FN__', make_speak_fn()), height=180)
 
-    # 보조 텍스트 입력
-    st.markdown(
-        '<div style="color:var(--text-muted);font-size:.8rem;font-weight:700;text-align:center;margin:.6rem 0 .3rem;">음성 인식이 안 될 경우 직접 입력</div>',
-        unsafe_allow_html=True,
+    question = st.text_area(
+        'qa_text',
+        key='qa_text',
+        height=140,
+        placeholder='질문을 말씀하시거나 직접 입력하세요',
+        label_visibility='collapsed',
     )
-    st.text_input('qa_bridge', key='qa_bridge', label_visibility='collapsed')
-    st.iframe(
-        """
-<script>
-(function(){
-  const inputs = window.parent.document.querySelectorAll('input[type="text"]');
-  for(const input of inputs){
-    if(input.getAttribute('aria-label') === 'qa_bridge'){
-      input.setAttribute('data-rmqa', '1');
-      input.style.position = 'absolute';
-      input.style.opacity = '0';
-      input.style.pointerEvents = 'none';
-      input.style.height = '0';
-    }
-  }
-})();
-</script>
-""",
-        height=1,
-    )
-    c1, c2 = st.columns([4, 1])
+
+    c1, c2 = st.columns([5, 2])
     with c1:
-        tq = st.text_input(
-            '직접 입력',
-            placeholder='질문 입력 후 Enter...',
-            label_visibility='collapsed',
-            key='qa_text',
-        )
+        st.caption('질문 입력 후 전송하기 버튼을 누르세요.')
     with c2:
-        if st.button('전송', key='qa_send', width='stretch') and tq.strip():
-            _ask(tq.strip())
+        if st.button('전송하기', key='qa_send', width='stretch') and question.strip():
+            _ask(question.strip())
+
+    st.components.v1.html(_QA_DOM_BRIDGE_HTML, height=0)
 
     c3, c4 = st.columns(2)
     with c3:
@@ -237,6 +269,7 @@ def render_qa_panel():
 
 
 def _ask(question: str):
+    """질문을 전송해 답변을 세션 히스토리에 추가한다."""
     with st.spinner('답변 생성 중...'):
         try:
             answer = answer_question(
@@ -247,4 +280,5 @@ def _ask(question: str):
             answer = f'오류: {exc}'
     st.session_state.qa_history.append({'q': question, 'a': answer})
     st.session_state.qa_new_answer = True
+    st.session_state.qa_clear_text = True
     st.rerun()

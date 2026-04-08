@@ -86,7 +86,7 @@ def render_tts_panel():
             f"""
 <script>
 (function(){{
-  {make_speak_fn()}
+  {make_speak_fn(allow_generation=True)}
   setTimeout(()=>{{
     speak('{safe}');
   }},300);

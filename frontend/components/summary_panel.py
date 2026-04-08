@@ -133,9 +133,9 @@ def render_summary_panel():
     s = summary.replace('\\', '\\\\').replace("'", "\\'").replace('\n', ' ')
     k = kw.replace("'", "\\'")
     keyboard_help = (
-        'Q를 누르면 질의응답, P를 누르면 퀴즈, R을 누르면 다시 듣기입니다.'
+        'Q키를 누르면 질의응답, P키를 누르면 퀴즈, R키을 누르면 다시 듣기입니다.'
         if has_quiz
-        else 'Q를 누르면 질의응답, R을 누르면 다시 듣기입니다.'
+        else 'Q키를 누르면 질의응답, R키을 누르면 다시 듣기입니다.'
     )
     quiz_key_action = (
         "speak('퀴즈로 이동합니다.', ()=>goTo('quiz'));"
@@ -153,7 +153,7 @@ def render_summary_panel():
         f"""
 <script>
 (function() {{
-  {make_speak_fn()}
+  {make_speak_fn(allow_generation=True)}
 
   window.lastQueueToken = 0;
   const playToken = {play_token};

@@ -11,13 +11,6 @@ ReadMate LLM 서버 진입점.
 from __future__ import annotations
 
 import logging
-
-# transformers 5.x 의 image_processing_*_fast 모듈 별칭 경고 억제
-logging.getLogger("transformers").addFilter(
-    type("_SuppressAliasWarning", (logging.Filter,), {
-        "filter": lambda self, r: "alias will be removed in future versions" not in r.getMessage()
-    })()
-)
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
