@@ -3,6 +3,8 @@ Qwen2.5-VL 기반 OCR 엔진 구현.
 VLM(Vision Language Model)으로 한국어/영어 텍스트 인식.
 4-bit 양자화로 8GB VRAM에서 동작 가능.
 싱글톤 패턴으로 모델 재로드 방지.
+
+접근성 모드: 이미지 유형 자동 분류 후 시각장애인을 위한 묘사 텍스트 생성.
 """
 
 import logging
@@ -25,16 +27,19 @@ from services.base import BaseOCR
 logger = logging.getLogger(__name__)
 
 _MODEL_ID = 'Qwen/Qwen2.5-VL-7B-Instruct'
+
+# 기존 텍스트 추출 프롬프트
 _OCR_PROMPT = (
     '이 이미지에서 모든 텍스트를 추출하세요. 텍스트만 출력하고 다른 설명은 하지 마세요.'
 )
-
 
 class Qwen2VLEngine(BaseOCR):
     """
     Qwen2.5-VL-7B 기반 한국어/영어 OCR 엔진.
     4-bit NF4 양자화로 ~5-6GB VRAM 사용.
     싱글톤 패턴으로 모델을 한 번만 로드.
+
+    접근성 모드: 이미지 유형을 자동 분류하여 시각장애인에 최적화된 묘사 텍스트 생성.
     """
 
     _instance: 'Qwen2VLEngine | None' = None
@@ -56,7 +61,6 @@ class Qwen2VLEngine(BaseOCR):
         Qwen2.5-VL 모델 초기화.
         4-bit NF4 양자화 적용, available_device()로 디바이스 자동 감지.
         """
-
         self._device = available_device()
         dtype = torch.bfloat16 if self._device != 'cpu' else torch.float32
 
@@ -95,39 +99,28 @@ class Qwen2VLEngine(BaseOCR):
             self._processor = None
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
-        # 싱글톤 인스턴스 초기화 (다음 호출 시 재로드 가능)
         with self._lock:
             Qwen2VLEngine._instance = None
         logger.info('Qwen2.5-VL 모델 언로드 완료')
 
-    def recognize(self, image_bytes: bytes) -> OCRResult:
+    def _run_inference(self, pil_image: Image.Image, prompt: str, max_new_tokens: int) -> str:
         """
-        이미지 바이트를 받아 Qwen2.5-VL로 텍스트 인식.
+        공통 추론 헬퍼. 이미지 + 프롬프트로 텍스트 생성.
 
         Args:
-            image_bytes: PNG/JPEG 등 이미지 원본 바이트
+            pil_image: PIL 이미지 (RGB)
+            prompt: 프롬프트 텍스트
+            max_new_tokens: 최대 생성 토큰 수
 
         Returns:
-            OCRResult: 인식된 텍스트 (bbox 없음, confidence=1.0)
-
-        Raises:
-            ValueError: 이미지 디코딩 실패 시
-            RuntimeError: 모델이 언로드된 상태에서 호출 시
+            생성된 텍스트 (strip 처리됨)
         """
-        if self._model is None or self._processor is None:
-            raise RuntimeError('모델이 언로드된 상태입니다. 새 인스턴스를 생성하세요.')
-
-        try:
-            pil_image = Image.open(BytesIO(image_bytes)).convert('RGB')
-        except Exception as e:
-            raise ValueError(f'이미지 디코딩 실패: {e}') from e
-
         messages = [
             {
                 'role': 'user',
                 'content': [
                     {'type': 'image', 'image': pil_image},
-                    {'type': 'text', 'text': _OCR_PROMPT},
+                    {'type': 'text', 'text': prompt},
                 ],
             }
         ]
@@ -145,30 +138,62 @@ class Qwen2VLEngine(BaseOCR):
         ).to(self._device)
 
         with torch.no_grad():
-            generated_ids = self._model.generate(**inputs, max_new_tokens=2048)
+            generated_ids = self._model.generate(**inputs, max_new_tokens=max_new_tokens)
 
-        # 입력 토큰 제거 후 디코딩
         generated_ids_trimmed = [
-            out_ids[len(in_ids) :]
-            for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
+            out_ids[len(in_ids):]
+            for in_ids, out_ids in zip(inputs.input_ids, generated_ids, strict=False)
         ]
-        raw_text = self._processor.batch_decode(
+        return self._processor.batch_decode(
             generated_ids_trimmed,
             skip_special_tokens=True,
             clean_up_tokenization_spaces=False,
         )[0].strip()
 
-        logger.info('OCR 완료: 텍스트 길이=%d', len(raw_text))
+    def recognize_pil(self, pil_image: Image.Image, prompt: str, max_new_tokens: int = 2048) -> str:
+        """
+        PIL 이미지와 커스텀 프롬프트로 직접 추론.
+        스캔형 PDF 페이지 통합 처리 등 외부에서 프롬프트를 직접 지정할 때 사용.
+
+        Args:
+            pil_image: PIL 이미지 (RGB)
+            prompt: 사용할 프롬프트
+            max_new_tokens: 최대 생성 토큰 수
+
+        Returns:
+            생성된 텍스트
+        """
+        if self._model is None or self._processor is None:
+            raise RuntimeError('모델이 언로드된 상태입니다. 새 인스턴스를 생성하세요.')
+        return self._run_inference(pil_image, prompt, max_new_tokens)
+
+    def recognize(self, image_bytes: bytes) -> OCRResult:
+        """
+        이미지 바이트를 받아 Qwen2.5-VL로 텍스트 추출.
+
+        Args:
+            image_bytes: PNG/JPEG 등 이미지 원본 바이트
+
+        Returns:
+            OCRResult: 추출된 텍스트
+
+        Raises:
+            ValueError: 이미지 디코딩 실패 시
+            RuntimeError: 모델이 언로드된 상태에서 호출 시
+        """
+        if self._model is None or self._processor is None:
+            raise RuntimeError('모델이 언로드된 상태입니다. 새 인스턴스를 생성하세요.')
+
+        try:
+            pil_image = Image.open(BytesIO(image_bytes)).convert('RGB')
+        except Exception as e:
+            raise ValueError(f'이미지 디코딩 실패: {e}') from e
+
+        raw_text = self._run_inference(pil_image, _OCR_PROMPT, max_new_tokens=2048)
+        logger.info('OCR 완료: 길이=%d', len(raw_text))
 
         return OCRResult(
-            boxes=[
-                OCRBox(
-                    text=raw_text,
-                    confidence=1.0,
-                    bbox=[],
-                    source='qwen2.5-vl',
-                )
-            ],
+            boxes=[OCRBox(text=raw_text, confidence=1.0, bbox=[], source='qwen2.5-vl')],
             engine='Qwen2.5-VL-7B',
             avg_confidence=1.0,
             raw_text=raw_text,
