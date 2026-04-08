@@ -3,16 +3,20 @@
 #
 # 사용법:
 #   ./scripts/start.sh
+#   ./scripts/start.sh --dev
 #   ./scripts/start.sh --server-port 8080 --app-port 8502
+#   ./scripts/start.sh --dev --server-port 8080 --app-port 8502
 #   LLM_ENGINE=openai ./scripts/start.sh
 
 SERVER_PORT=${SERVER_PORT:-8000}
 APP_PORT=${APP_PORT:-8501}
+DEV_FLAG=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --server-port) SERVER_PORT="$2"; shift 2 ;;
     --app-port)    APP_PORT="$2";    shift 2 ;;
+    --dev)         DEV_FLAG="--dev"; shift ;;
     *) shift ;;
   esac
 done
@@ -20,7 +24,7 @@ done
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
-SERVER_CMD="cd '$PROJECT_ROOT' && uv run uvicorn backend.main:app --host 0.0.0.0 --port $SERVER_PORT --reload"
+SERVER_CMD="cd '$PROJECT_ROOT' && uv run python -m backend.main $DEV_FLAG --port $SERVER_PORT"
 APP_CMD="cd '$PROJECT_ROOT' && LLM_SERVER_URL=http://localhost:$SERVER_PORT uv run streamlit run frontend/app.py --server.port $APP_PORT"
 
 echo "=========================================="
@@ -28,6 +32,7 @@ echo "  ReadMate 전체 시작"
 echo "  LLM 서버 : http://localhost:$SERVER_PORT"
 echo "  앱       : http://localhost:$APP_PORT"
 echo "  엔진     : ${LLM_ENGINE:-openai (기본)}"
+echo "  모드     : ${DEV_FLAG:+dev (Edge TTS)}${DEV_FLAG:-prod (ElevenLabs)}"
 echo "=========================================="
 echo ""
 

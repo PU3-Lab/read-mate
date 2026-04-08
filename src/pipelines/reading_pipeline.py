@@ -287,20 +287,28 @@ def create_default_reading_pipeline() -> ReadingPipeline:
     Returns:
         ReadingPipeline: 기본 서비스 조합이 연결된 오케스트레이터
     """
+    import os
+
+    from core.config import is_dev_mode
     from services.llm_remote import RemoteLLM
     from services.ocr_service import Qwen2VLEngine
     from services.pdf_service import PyPDFEngine
     from services.stt_whisper_service import ReadMateSTT
+    from services.tts_edge import EdgeTTSEngine
     from services.tts_elevenlabs import ElevenLabsTTS
     from services.tts_unavailable import UnavailableTTSEngine
 
     ocr = Qwen2VLEngine()
-    try:
-        tts_engine: BaseTTS = ElevenLabsTTS()
-    except Exception as exc:
-        reason = f'ElevenLabs TTS 초기화 실패: {exc}. .env에 ELEVENLABS_API_KEY를 확인하세요.'
-        logger.warning('[tts] fallback to unavailable engine: %s', reason)
-        tts_engine = UnavailableTTSEngine(reason)
+    if is_dev_mode():
+        logger.info('[tts] dev 모드: EdgeTTSEngine 사용')
+        tts_engine: BaseTTS = EdgeTTSEngine()
+    else:
+        try:
+            tts_engine = ElevenLabsTTS()
+        except Exception as exc:
+            reason = f'ElevenLabs TTS 초기화 실패: {exc}. .env에 ELEVENLABS_API_KEY를 확인하세요.'
+            logger.warning('[tts] fallback to unavailable engine: %s', reason)
+            tts_engine = UnavailableTTSEngine(reason)
 
     return ReadingPipeline(
         ocr=ocr,

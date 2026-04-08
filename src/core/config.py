@@ -52,6 +52,10 @@ ELEVENLABS_API_KEY: str = os.getenv('ELEVENLABS_API_KEY', '')
 # 모델명
 # ─────────────────────────────────────────
 
+def is_dev_mode() -> bool:
+    """실시간으로 APP_ENV 환경변수를 확인하여 dev 모드 여부를 반환한다."""
+    return os.getenv('APP_ENV', 'prod') == 'dev'
+
 LLM_ENGINE: str = os.getenv('LLM_ENGINE', 'gemma')  # gemma | qwen | openai
 LLM_SERVER_URL: str = os.getenv('LLM_SERVER_URL', 'http://localhost:8000')
 LLM_MODEL_DEFAULT: str = 'google/gemma-4-E4B-it'

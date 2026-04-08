@@ -3,18 +3,26 @@ REM ReadMate LLM 서버 실행 스크립트 (Windows)
 REM
 REM 사용법:
 REM   scripts\start_server.bat
+REM   scripts\start_server.bat --dev
 REM   scripts\start_server.bat --port 8080
+REM   scripts\start_server.bat --dev --port 8080
 REM   set LLM_ENGINE=openai && scripts\start_server.bat
 
 setlocal
 
 set PORT=8000
+set DEV_FLAG=
 
-REM --port 인자 파싱
+REM 인자 파싱
 :parse_args
 if "%~1"=="--port" (
     set PORT=%~2
     shift
+    shift
+    goto parse_args
+)
+if "%~1"=="--dev" (
+    set DEV_FLAG=--dev
     shift
     goto parse_args
 )
@@ -31,9 +39,14 @@ if defined LLM_ENGINE (
 ) else (
     echo   엔진    : gemma (기본)
 )
+if defined DEV_FLAG (
+    echo   모드    : dev (Edge TTS)
+) else (
+    echo   모드    : prod (ElevenLabs)
+)
 echo   주소    : http://localhost:%PORT%
 echo.
 
-uv run uvicorn backend.main:app --host 0.0.0.0 --port %PORT% --reload
+uv run python -m backend.main %DEV_FLAG% --port %PORT%
 
 endlocal
