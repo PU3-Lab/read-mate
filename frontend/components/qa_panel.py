@@ -5,9 +5,17 @@ from pipelines import answer_question
 
 _QA_HTML = """
 <style>
+html, body{
+  margin:0;
+  padding:0;
+  width:100%;
+  height:210px;
+  overflow:hidden;
+}
 *{box-sizing:border-box;margin:0;padding:0;}
 body{
-  background:transparent;font-family:'Gowun Dodum',sans-serif;
+  background:transparent;
+  font-family:'Gowun Dodum',sans-serif;
   --bg:         #faf5f0;
   --surface:    #edddd0;
   --surface2:   #e0ccbb;
@@ -16,38 +24,79 @@ body{
   --accent2:    #1a6b55;
   --text:       #1a0f0a;
   --text-muted: #3d2010;
+  overflow:hidden;
 }
 #wrap{
-  background:var(--surface);border:2px solid var(--border);
-  border-radius:20px;padding:1.8rem 1.6rem;text-align:center;
-  outline:none;transition:all .15s ease-out;
+  width:100%;
+  height:210px;
+  overflow:hidden;
+  background:var(--surface);
+  border:2px solid var(--border);
+  border-radius:20px;
+  padding:1.2rem 1.2rem;
+  text-align:center;
+  outline:none;
+  transition:all .15s ease-out;
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
 }
 #wrap:focus{
-  border-color:var(--accent);box-shadow:0 10px 25px rgba(140,46,16,.2);background:var(--surface2);
+  border-color:var(--accent);
+  box-shadow:0 10px 25px rgba(140,46,16,.2);
+  background:var(--surface2);
 }
-#icon{font-size:2.2rem;margin-bottom:.5rem;}
+#icon{
+  font-size:2rem;
+  margin-bottom:.35rem;
+  line-height:1;
+}
 #icon.pulse{animation:pulse 1s infinite;}
-@keyframes pulse{0%,100%{transform:scale(1);opacity:1;}50%{transform:scale(1.15);opacity:.7;}}
-#status{font-size:1rem;font-weight:800;color:var(--text);margin-bottom:.3rem;}
-#hint{font-size:.78rem;color:var(--text-muted);font-weight:700;line-height:1.8;margin-bottom:1rem;}
+@keyframes pulse{
+  0%,100%{transform:scale(1);opacity:1;}
+  50%{transform:scale(1.15);opacity:.7;}
+}
+#status{
+  font-size:1rem;
+  font-weight:800;
+  color:var(--text);
+  margin-bottom:.3rem;
+  line-height:1.35;
+}
+#hint{
+  font-size:.76rem;
+  color:var(--text-muted);
+  font-weight:700;
+  line-height:1.5;
+  margin-bottom:.9rem;
+}
 #send-btn{
-  background:var(--accent);color:#fff;
-  border:none;border-radius:50px;padding:.6rem 0;
-  font-size:.9rem;font-weight:700;cursor:pointer;width:100%;
+  background:var(--accent);
+  color:#fff;
+  border:none;
+  border-radius:50px;
+  padding:.62rem 0;
+  font-size:.9rem;
+  font-weight:700;
+  cursor:pointer;
+  width:100%;
   box-shadow:0 3px 10px rgba(140,46,16,.3);
+  flex-shrink:0;
 }
 #send-btn:hover{opacity:.88;}
 </style>
+
 <div id="wrap" tabindex="0">
   <div id="icon">🎤</div>
   <div id="status">Space 를 눌러 질문을 말씀하세요</div>
   <div id="hint">Space : 녹음 시작/중지 &nbsp;|&nbsp; Enter : 전송 &nbsp;|&nbsp; Backspace : 요약으로</div>
   <button id="send-btn">질문 전송 (Enter)</button>
 </div>
+
 <script>
 (function(){
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  let rec=null, recording=false, transcript='';
+  let rec = null, recording = false, transcript = '';
 
   const icon   = document.getElementById('icon');
   const status = document.getElementById('status');
@@ -76,8 +125,8 @@ body{
     } else {
       textarea.value = value;
     }
-    textarea.dispatchEvent(new Event('input', {bubbles:true}));
-    textarea.dispatchEvent(new Event('change', {bubbles:true}));
+    textarea.dispatchEvent(new Event('input', { bubbles:true }));
+    textarea.dispatchEvent(new Event('change', { bubbles:true }));
     return textarea.value || '';
   }
 
@@ -97,40 +146,60 @@ body{
   }
 
   function initRec(){
-    if(!SR)return;
-    rec=new SR();rec.lang='ko-KR';rec.continuous=true;rec.interimResults=true;
-    rec.onresult=(e)=>{
-      let interim='';transcript='';
-      for(let i=0;i<e.results.length;i++){
-        const t=e.results[i][0].transcript;
-        e.results[i].isFinal?(transcript+=t):(interim+=t);
+    if(!SR) return;
+    rec = new SR();
+    rec.lang = 'ko-KR';
+    rec.continuous = true;
+    rec.interimResults = true;
+
+    rec.onresult = (e) => {
+      let interim = '';
+      transcript = '';
+      for(let i = 0; i < e.results.length; i++){
+        const t = e.results[i][0].transcript;
+        e.results[i].isFinal ? (transcript += t) : (interim += t);
       }
-      transcript = setParentTextareaValue(transcript+(interim?' '+interim:''));
+      transcript = setParentTextareaValue(
+        transcript + (interim ? ' ' + interim : '')
+      );
     };
-    rec.onend=()=>{if(recording)rec.start();};
-    rec.onerror=()=>{setIdle();speak('마이크 오류가 발생했습니다.');};
+
+    rec.onend = () => {
+      if(recording) rec.start();
+    };
+
+    rec.onerror = () => {
+      setIdle();
+      speak('마이크 오류가 발생했습니다.');
+    };
   }
 
   function setIdle(){
-    recording=false;
-    icon.className='';icon.textContent='🎤';
+    recording = false;
+    icon.className = '';
+    icon.textContent = '🎤';
     transcript = getParentTextareaValue().trim();
-    status.textContent=transcript.trim()
+    status.textContent = transcript
       ? '질문을 확인한 뒤 전송하기 버튼을 누르세요'
       : 'Space 를 눌러 질문을 말씀하세요';
   }
 
   function setRec(){
-    recording=true;
-    icon.className='pulse';icon.textContent='🔴';
-    status.textContent='녹음 중... Space 로 중지';
+    recording = true;
+    icon.className = 'pulse';
+    icon.textContent = '🔴';
+    status.textContent = '녹음 중... Space 로 중지';
   }
 
   function toggle(){
-    if(!SR){speak('이 브라우저는 음성 인식을 지원하지 않습니다.');return;}
-    if(!rec)initRec();
+    if(!SR){
+      speak('이 브라우저는 음성 인식을 지원하지 않습니다.');
+      return;
+    }
+    if(!rec) initRec();
+
     if(!recording){
-      transcript='';
+      transcript = '';
       setParentTextareaValue('');
       rec.start();
       setRec();
@@ -143,9 +212,12 @@ body{
   }
 
   function send(){
-    const question=getParentTextareaValue().trim();
-    transcript=question;
-    if(!question){speak('먼저 질문을 말씀해주세요.');return;}
+    const question = getParentTextareaValue().trim();
+    transcript = question;
+    if(!question){
+      speak('먼저 질문을 말씀해주세요.');
+      return;
+    }
     speak('질문을 전송합니다. 잠시 기다려주세요.');
     setParentTextareaValue(question);
     const button = findParentSendButton();
@@ -154,28 +226,44 @@ body{
     }
   }
 
-  btn.addEventListener('click',send);
+  btn.addEventListener('click', send);
 
   function onKey(e){
-    const tag=e.target.tagName;
-    if(tag==='INPUT'||tag==='TEXTAREA')return;
-    if(e.code==='Space'){e.preventDefault();toggle();}
-    if(e.code==='Enter'){e.preventDefault();send();}
-    if(e.key==='Backspace'){
+    const tag = e.target.tagName;
+    if(tag === 'INPUT' || tag === 'TEXTAREA') return;
+
+    if(e.code === 'Space'){
       e.preventDefault();
-      speak('요약으로 돌아갑니다.',()=>{
-        const btns=window.parent.document.querySelectorAll('button');
-        for(const b of btns){if(b.innerText.includes('요약으로')){b.click();break;}}
+      toggle();
+    }
+
+    if(e.code === 'Enter'){
+      e.preventDefault();
+      send();
+    }
+
+    if(e.key === 'Backspace'){
+      e.preventDefault();
+      speak('요약으로 돌아갑니다.', () => {
+        const btns = window.parent.document.querySelectorAll('button');
+        for(const b of btns){
+          if(b.innerText.includes('요약으로')){
+            b.click();
+            break;
+          }
+        }
       });
     }
   }
 
-  document.addEventListener('keydown',onKey);
-  try{window.parent.document.addEventListener('keydown',onKey);}catch(err){}
+  document.addEventListener('keydown', onKey);
+  try{
+    window.parent.document.addEventListener('keydown', onKey);
+  } catch(err){}
 
-  setTimeout(()=>speak(
-    '질의응답 화면입니다. 스페이스키 를 눌러 질문을 하고, 다시 스페이크키 로 중지한 뒤 엔터키 로 전송하세요. 백스페이스 를 누르면 요약화면 으로 돌아갑니다.'
-  ),400);
+  setTimeout(() => speak(
+    '질의응답 화면입니다. 스페이스키를 눌러 질문을 하고, 다시 스페이스키로 중지한 뒤 엔터키로 전송하세요. 백스페이스를 누르면 요약화면으로 돌아갑니다.'
+  ), 400);
 })();
 </script>
 """
@@ -217,19 +305,23 @@ def render_qa_panel():
 
     st.markdown(
         """
-    <div class="rm-card">
-      <div class="rm-card-title">💬 질의응답</div>
-    </div>
-    """,
+        <div class="rm-card">
+          <div class="rm-card-title">💬 질의응답</div>
+        </div>
+        """,
         unsafe_allow_html=True,
     )
 
     history = st.session_state.get('qa_history', [])
     for item in history:
         st.markdown(
-            f'<div class="qa-user">🙋 {item["q"]}</div>', unsafe_allow_html=True
+            f'<div class="qa-user">🙋 {item["q"]}</div>',
+            unsafe_allow_html=True,
         )
-        st.markdown(f'<div class="qa-ai">🤖 {item["a"]}</div>', unsafe_allow_html=True)
+        st.markdown(
+            f'<div class="qa-ai">🤖 {item["a"]}</div>',
+            unsafe_allow_html=True,
+        )
 
     if history and st.session_state.get('qa_new_answer'):
         ans = history[-1]['a'].replace("'", "\\'").replace('\n', ' ')
@@ -238,9 +330,9 @@ def render_qa_panel():
 <script>
 (function(){{
   {make_speak_fn(allow_generation=True)}
-  setTimeout(()=>speak('{ans}',()=>{{
-    setTimeout(()=>speak('다시 질문하려면 스페이스, 요약으로 돌아가려면 백스페이스 를 눌러주세요.'),300);
-  }}),300);
+  setTimeout(() => speak('{ans}', () => {{
+    setTimeout(() => speak('다시 질문하려면 스페이스, 요약으로 돌아가려면 백스페이스를 눌러주세요.'), 300);
+  }}), 300);
 }})();
 </script>
 """,
@@ -248,7 +340,10 @@ def render_qa_panel():
         )
         st.session_state.qa_new_answer = False
 
-    st.iframe(_QA_HTML.replace('__SPEAK_FN__', make_speak_fn()), height=180)
+    st.iframe(
+        _QA_HTML.replace('__SPEAK_FN__', make_speak_fn()),
+        height=210,
+    )
 
     question = st.text_area(
         'qa_text',
@@ -274,6 +369,7 @@ def render_qa_panel():
             st.session_state.active_panel = 'summary'
             st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
+
     with c4:
         st.markdown('<div class="btn-sec">', unsafe_allow_html=True)
         if st.button('🗑️ 대화 초기화', width='stretch', key='qa_clear'):
@@ -292,6 +388,7 @@ def _ask(question: str):
             )
         except Exception as exc:
             answer = f'오류: {exc}'
+
     st.session_state.qa_history.append({'q': question, 'a': answer})
     st.session_state.qa_new_answer = True
     st.session_state.qa_clear_text = True
