@@ -27,18 +27,57 @@ __SPEAK_FN__
   }
   setTimeout(init, 500);
 
-  // 버튼 포커스 → 즉시 TTS
   function attachFocus(){
+    // 1. Buttons (탭 순서에서 제외)
     window.parent.document.querySelectorAll('button').forEach(b=>{
       if(b._rmAttached) return;
       b._rmAttached=true;
+      b.setAttribute('tabindex', '-1');
       b.addEventListener('focus',()=>{
         const t=b.innerText.trim();
         if(t.includes('분석 시작')) speak('분석 시작 버튼입니다. 엔터를 눌러주세요.');
-        else if(t.includes('돌아가기')) speak('홈화면으로 돌아가기 버튼입니다.');
+        else if(t.includes('ReadMate')) speak('홈화면으로 돌아가기 버튼입니다.');
+      });
+    });
+
+    // 2. Summary Card
+    window.parent.document.querySelectorAll('.rm-summary-card').forEach(c=>{
+      if(c._rmAttached) return;
+      c._rmAttached=true;
+      if(!c.getAttribute('tabindex')) c.setAttribute('tabindex', '0');
+      c.addEventListener('focus', ()=>{
+        speak('분석 요약 결과입니다. 읽어드릴까요? 알키 를 누르면 다시 읽어드립니다.');
       });
     });
   }
+
+  // Focus Trapping
+  function handleTab(e) {
+    if (e.key !== 'Tab') return;
+    const doc = window.parent.document;
+    const focusables = Array.from(doc.querySelectorAll('button, [tabindex="0"], input, textarea, select, a'))
+      .filter(el => {
+        if (el.getAttribute('tabindex') === '-1') return false;
+        if (el.offsetWidth <= 0 && el.offsetHeight <= 0) return false;
+        const style = window.parent.getComputedStyle(el);
+        if (style.display === 'none' || style.visibility === 'hidden') return false;
+        return true;
+      });
+    if (focusables.length === 0) return;
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    const active = doc.activeElement;
+    if (e.shiftKey) {
+      if (active === first || !focusables.includes(active)) { last.focus(); e.preventDefault(); }
+    } else {
+      if (active === last || !focusables.includes(active)) { first.focus(); e.preventDefault(); }
+    }
+  }
+  if (!window.parent._rmTabHandler) {
+    window.parent._rmTabHandler = handleTab;
+    window.parent.document.addEventListener('keydown', window.parent._rmTabHandler);
+  }
+
   const obs=new MutationObserver(attachFocus);
   obs.observe(window.parent.document.body,{childList:true,subtree:true});
   setTimeout(attachFocus,800);

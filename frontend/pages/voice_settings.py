@@ -32,6 +32,32 @@ __SPEAK_FN__
       });
     });
   }
+
+  // Focus Trapping
+  function handleTab(e) {
+    if (e.key !== 'Tab') return;
+    const doc = window.parent.document;
+    const focusables = Array.from(doc.querySelectorAll('button, [tabindex="0"], input, textarea, select, a'))
+      .filter(el => {
+        if (el.offsetWidth <= 0 && el.offsetHeight <= 0) return false;
+        if (window.parent.getComputedStyle(el).display === 'none') return false;
+        return true;
+      });
+    if (focusables.length === 0) return;
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    const active = doc.activeElement;
+    if (e.shiftKey) {
+      if (active === first || !focusables.includes(active)) { last.focus(); e.preventDefault(); }
+    } else {
+      if (active === last || !focusables.includes(active)) { first.focus(); e.preventDefault(); }
+    }
+  }
+  if (!window.parent._rmTabHandler) {
+    window.parent._rmTabHandler = handleTab;
+    window.parent.document.addEventListener('keydown', window.parent._rmTabHandler);
+  }
+
   const obs=new MutationObserver(attachFocus);
   obs.observe(window.parent.document.body,{childList:true,subtree:true});
   setTimeout(attachFocus,800);

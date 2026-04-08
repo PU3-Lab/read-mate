@@ -41,32 +41,42 @@ def render_quiz_panel():
         f"""
 <style>
 *{{box-sizing:border-box;margin:0;padding:0;}}
-body{{background:transparent;font-family:'Gowun Dodum',sans-serif;}}
-#qw{{background:#fff8f2;border:2px solid #f0e0cc;border-radius:20px;padding:1.6rem 1.4rem;outline:none;}}
-#qw:focus{{border-color:#ff7e5f;box-shadow:0 0 0 4px rgba(255,126,95,.18);}}
-#qc{{font-size:.8rem;font-weight:700;color:#b09a88;margin-bottom:.3rem;}}
-#qs{{font-size:.78rem;font-weight:700;color:#b09a88;margin-bottom:.4rem;min-height:1.1rem;}}
-#qt{{font-size:1.05rem;font-weight:800;color:#3d2f24;margin-bottom:1rem;line-height:1.6;}}
-.op{{display:flex;align-items:center;gap:.7rem;background:#fff;border:2px solid #f0e0cc;
+body{{
+  background:transparent;font-family:'Gowun Dodum',sans-serif;
+  --bg:         #faf5f0;
+  --surface:    #edddd0;
+  --surface2:   #e0ccbb;
+  --border:     #7a5540;
+  --accent:     #8c2e10;
+  --accent2:    #1a6b55;
+  --text:       #1a0f0a;
+  --text-muted: #3d2010;
+}}
+#qw{{background:var(--surface);border:2px solid var(--border);border-radius:20px;padding:1.6rem 1.4rem;outline:none;transition:all .15s ease-out;}}
+#qw:focus{{border-color:var(--accent);box-shadow:0 10px 25px rgba(140,46,16,.2);background:var(--surface2);}}
+#qc{{font-size:.8rem;font-weight:700;color:var(--text-muted);margin-bottom:.3rem;}}
+#qs{{font-size:.78rem;font-weight:700;color:var(--text-muted);margin-bottom:.4rem;min-height:1.1rem;}}
+#qt{{font-size:1.05rem;font-weight:800;color:var(--text);margin-bottom:1rem;line-height:1.6;}}
+.op{{display:flex;align-items:center;gap:.7rem;background:#fff;border:2px solid var(--border);
     border-radius:14px;padding:.6rem .9rem;margin-bottom:.45rem;
-    font-size:.9rem;font-weight:700;color:#3d2f24;transition:border-color .15s,background .15s;cursor:pointer;}}
-.op.sel{{border-color:#ff7e5f;background:#fff4ee;}}
-.op.ok {{border-color:#43bfa8;background:#f0fdf9;color:#1a8a78;}}
-.op.ng {{border-color:#f06060;background:#fff1f1;color:#c03030;}}
-.on{{background:#f0e0cc;border-radius:8px;width:28px;height:28px;
+    font-size:.9rem;font-weight:700;color:var(--text);transition:border-color .15s,background .15s;cursor:pointer;}}
+.op.sel{{border-color:var(--accent);background:var(--surface2);}}
+.op.ok {{border-color:var(--accent2);background:#f0fdf9;color:var(--accent2);}}
+.op.ng {{border-color:var(--accent);background:#fdf0ed;color:var(--accent);}}
+.on{{background:var(--surface2);border-radius:8px;width:28px;height:28px;
     display:flex;align-items:center;justify-content:center;font-size:.82rem;font-weight:800;flex-shrink:0;}}
-.op.sel .on{{background:#ff7e5f;color:#fff;}}
-.op.ok  .on{{background:#43bfa8;color:#fff;}}
-.op.ng  .on{{background:#f06060;color:#fff;}}
+.op.sel .on{{background:var(--accent);color:#fff;}}
+.op.ok  .on{{background:var(--accent2);color:#fff;}}
+.op.ng  .on{{background:var(--accent);color:#fff;}}
 #fb{{font-size:.95rem;font-weight:800;text-align:center;margin:.7rem 0;min-height:1.3rem;}}
-#fb.ok{{color:#43bfa8;}} #fb.ng{{color:#f06060;}}
+#fb.ok{{color:var(--accent2);}} #fb.ng{{color:var(--accent);}}
 .br{{display:flex;gap:.5rem;margin-top:.8rem;flex-wrap:wrap;}}
-.btn{{flex:1;background:linear-gradient(135deg,#ff7e5f,#f9a03f);color:#fff;border:none;
+.btn{{flex:1;background:var(--accent);color:#fff;border:none;
      border-radius:50px;padding:.55rem 0;font-size:.85rem;font-weight:700;cursor:pointer;
-     box-shadow:0 3px 10px rgba(255,126,95,.3);min-width:60px;}}
-.btn:disabled{{background:#ede4da;color:#b09a88;box-shadow:none;cursor:default;}}
-.btn.sec{{background:#fff;color:#b09a88;border:1.5px solid #f0e0cc;box-shadow:none;}}
-#sc{{text-align:center;font-size:1.1rem;font-weight:800;color:#ff7e5f;margin-top:.8rem;display:none;}}
+     box-shadow:0 3px 10px rgba(140,46,16,.3);min-width:60px;}}
+.btn:disabled{{background:var(--surface2);color:var(--text-muted);box-shadow:none;cursor:default;}}
+.btn.sec{{background:#fff;color:var(--text-muted);border:1.5px solid var(--border);box-shadow:none;}}
+#sc{{text-align:center;font-size:1.1rem;font-weight:800;color:var(--accent);margin-top:.8rem;display:none;}}
 </style>
 
 <div id="qw" tabindex="0">
@@ -92,7 +102,6 @@ body{{background:transparent;font-family:'Gowun Dodum',sans-serif;}}
       let cur=0, sel=-1, done=false, score=0;
 
   // 숫자 -> 한글 서수 변환 (TTS 오독 방지)
-  // 한자어 서수: 일, 이, 삼, 사 (보기 번호, 정답 번호)
   function numKo(n){{
     if(n===1) return "\uc77c";
     if(n===2) return "\uc774";
@@ -100,7 +109,6 @@ body{{background:transparent;font-family:'Gowun Dodum',sans-serif;}}
     if(n===4) return "\uc0ac";
     return String(n);
   }}
-  // 고유어 서수: 한, 두, 세, 네 (개수, 문제 수, 점수)
   function numNative(n){{
     if(n===1) return "\ud55c";
     if(n===2) return "\ub450";
