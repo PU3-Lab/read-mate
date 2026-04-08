@@ -2,7 +2,7 @@ import importlib
 import logging
 
 import streamlit as st
-from speak_js import make_speak_fn
+from speak_js import get_announcement_token, make_speak_fn
 from styles import inject_styles
 
 from pipelines import get_default_reading_pipeline
@@ -52,6 +52,7 @@ def init():
         'summary_play_key': '',
         'summary_play_token': 0,
         'qa_new_answer': False,
+        'qa_answer_play_token': 0,
         'selected_voice': 'JiYeong Kang',
     }
     for k, v in defaults.items():
@@ -110,7 +111,8 @@ __SPEAK_FN__
     if(active)return; active=true;
     document.getElementById('wake').style.display='none';
     document.getElementById('hint').style.display='block';
-    speak(
+    speakOnce(
+      `home-intro:__INTRO_TOKEN__`,
       '리드메이트입니다. 소리로 읽는 강의자료, 배움의 끝이 없도록 우리 함께 공부해요. 탭키를 눌러 버튼으로 이동하세요. 첫번째 버튼은 강의 녹음 분석, 두번째 버튼은 강의 자료 분석, 세번째 버튼은 내 목소리 설정입니다. 엔터 를 눌러 선택하세요.',
       ()=>{
         const btns=window.parent.document.querySelectorAll('button');
@@ -125,17 +127,19 @@ __SPEAK_FN__
     window.parent.document.addEventListener('keydown', activate, {once:true});
     window.parent.document.addEventListener('click',   activate, {once:true});
   }catch(e){}
-
-  setTimeout(()=>{
-    if(active) speak('리드메이트입니다. 탭 키를 눌러 기능을 선택하세요.');
-  },600);
 })();
 </script>
 """
 
 
 def _home_a11y_js() -> str:
-    return _HOME_A11Y_TEMPLATE.replace('__SPEAK_FN__', make_speak_fn())
+    intro_token = get_announcement_token('home')
+    return (
+        _HOME_A11Y_TEMPLATE.replace('__SPEAK_FN__', make_speak_fn()).replace(
+            '__INTRO_TOKEN__',
+            str(intro_token),
+        )
+    )
 
 
 # ── 헤더 ─────────────────────────────────────

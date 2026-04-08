@@ -1,13 +1,14 @@
 import json
 
 import streamlit as st
-from speak_js import make_speak_fn
+from speak_js import get_announcement_token, make_speak_fn
 
 
 def render_quiz_panel():
     quiz_list = st.session_state.get('quiz', [])
     if not quiz_list:
         return
+    intro_token = get_announcement_token('result:quiz')
 
     st.markdown(
         """
@@ -84,10 +85,11 @@ body{{background:transparent;font-family:'Gowun Dodum',sans-serif;}}
   <div id="sc" aria-live="polite"></div>
 </div>
 
-<script>
-(function(){{
-  const Q={qj};
-  let cur=0, sel=-1, done=false, score=0;
+    <script>
+    (function(){{
+      const Q={qj};
+      const introToken={intro_token};
+      let cur=0, sel=-1, done=false, score=0;
 
   // 숫자 -> 한글 서수 변환 (TTS 오독 방지)
   // 한자어 서수: 일, 이, 삼, 사 (보기 번호, 정답 번호)
@@ -232,23 +234,25 @@ body{{background:transparent;font-family:'Gowun Dodum',sans-serif;}}
   document.addEventListener('keydown',onKey);
   try{{window.parent.document.addEventListener('keydown',onKey);}}catch(err){{}}
 
-  // 진입 안내 → 첫 문제
-  setTimeout(()=>{{
-    speakQ([
-      `총 ${{numNative(Q.length)}} 문제입니다.`,
-      '숫자키 1부터 4로 보기를 선택하고 엔터로 제출하세요.',
-      '엘키 로 문제 다시 듣기, 씨키 로 선택 확인, 백스페이스 로 요약으로 돌아갑니다.',
-      '지금부터 시작합니다.'
-    ], 0, ()=>setTimeout(renderQ,400));
-  }},400);
-}})();
-</script>
-""",
+      // 진입 안내 → 첫 문제
+      setTimeout(()=>{{
+        speakOnce(
+          `quiz-intro:${{introToken}}`,
+          `총 ${{numNative(Q.length)}} 문제입니다. 숫자키 1부터 4로 보기를 선택하고 엔터로 제출하세요. 엘키 로 문제 다시 듣기, 씨키 로 선택 확인, 백스페이스 로 요약으로 돌아갑니다. 지금부터 시작합니다.`,
+          ()=>setTimeout(renderQ,400)
+        );
+      }},400);
+    }})();
+    </script>
+    """,
         height=h,
     )
 
     st.markdown('<div class="btn-sec">', unsafe_allow_html=True)
     if st.button('← 요약으로 돌아가기', width='stretch', key='quiz_back'):
         st.session_state.active_panel = 'summary'
+        st.session_state.summary_play_token = (
+            int(st.session_state.get('summary_play_token', 0)) + 1
+        )
         st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)

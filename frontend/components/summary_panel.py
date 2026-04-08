@@ -1,7 +1,7 @@
 import base64
 
 import streamlit as st
-from speak_js import make_speak_fn
+from speak_js import get_announcement_token, make_speak_fn
 
 
 def _sync_summary_play_state(
@@ -29,6 +29,7 @@ def render_summary_panel():
         return
 
     _sync_summary_play_state(summary, audio_file_name, has_cached_audio)
+    get_announcement_token('result:summary')
 
     # ── 요약 카드 (타이틀 + 본문 묶음) ──────────────
     st.markdown(
@@ -153,26 +154,15 @@ def render_summary_panel():
         f"""
 <script>
 (function() {{
-  {make_speak_fn(allow_generation=True)}
+  {make_speak_fn(allow_generation=True, priority='summary')}
 
   window.lastQueueToken = 0;
   const playToken = {play_token};
   const hasCachedAudio = {'true' if has_cached_audio else 'false'};
   const cachedAudioSrc = {repr(audio_src)};
 
-  function claimAudio(audio) {{
-    try {{
-      if (window.parent.speechSynthesis) window.parent.speechSynthesis.cancel();
-    }} catch (err) {{}}
-    try {{
-      const owner = window.parent;
-      const prev = owner.__rmCurrentAudio;
-      if (prev && prev !== audio) {{
-        prev.pause();
-        prev.currentTime = 0;
-      }}
-      owner.__rmCurrentAudio = audio;
-    }} catch (err) {{}}
+  function ownSummaryAudio(audio) {{
+    claimAudio(audio, 'summary', Date.now());
   }}
 
   function playCachedSummary() {{
@@ -188,7 +178,7 @@ def render_summary_panel():
         if (window.parent.__rmCurrentAudio === audio) window.parent.__rmCurrentAudio = null;
       }} catch (err) {{}}
     }};
-    claimAudio(audio);
+    ownSummaryAudio(audio);
     audio.currentTime = 0;
     audio.play().catch(() => {{}});
   }}
@@ -224,8 +214,7 @@ def render_summary_panel():
 
   function goTo(panel) {{
     window.lastQueueToken = 0; // 페이지 이동 시 큐 중단
-    if (window.currentAudio) {{ window.currentAudio.pause(); window.currentAudio = null; }}
-    if (window.speechSynthesis) window.speechSynthesis.cancel();
+    stopSpeak();
 
     const btns = window.parent.document.querySelectorAll('button');
     for (const b of btns) {{

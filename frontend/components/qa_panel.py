@@ -1,5 +1,7 @@
+import json
+
 import streamlit as st
-from speak_js import make_speak_fn
+from speak_js import get_announcement_token, make_speak_fn
 
 from pipelines import answer_question
 
@@ -38,6 +40,8 @@ body{background:transparent;font-family:'Gowun Dodum',sans-serif;}
   const icon   = document.getElementById('icon');
   const status = document.getElementById('status');
   const btn    = document.getElementById('send-btn');
+  const latestAnswer = __LATEST_ANSWER__;
+  const answerToken = __ANSWER_TOKEN__;
 
   __SPEAK_FN__
 
@@ -159,8 +163,17 @@ body{background:transparent;font-family:'Gowun Dodum',sans-serif;}
   document.addEventListener('keydown',onKey);
   try{window.parent.document.addEventListener('keydown',onKey);}catch(err){}
 
-  setTimeout(()=>speak(
-    '질의응답 화면입니다. 스페이스키 를 눌러 질문을 하고, 다시 스페이크키 로 중지한 뒤 엔터키 로 전송하세요. 백스페이스 를 누르면 요약화면 으로 돌아갑니다.'
+  const owner = window.parent || window;
+  if (latestAnswer && owner.__rmQaAnswerToken !== answerToken) {
+    owner.__rmQaAnswerToken = answerToken;
+    setTimeout(()=>speak(latestAnswer,()=>{
+      setTimeout(()=>speak('다시 질문하려면 스페이스, 요약으로 돌아가려면 백스페이스 를 눌러주세요.'),300);
+    }),300);
+  }
+
+  setTimeout(()=>speakOnce(
+    `qa-intro:__INTRO_TOKEN__`,
+    '질의응답 화면입니다. 스페이스키 를 눌러 질문을 하고, 다시 스페이스키 로 중지한 뒤 엔터키 로 전송하세요. 백스페이스 를 누르면 요약화면 으로 돌아갑니다.'
   ),400);
 })();
 </script>
@@ -195,6 +208,7 @@ _QA_DOM_BRIDGE_HTML = """
 
 def render_qa_panel():
     """질의응답 패널을 렌더링한다."""
+    intro_token = get_announcement_token('result:qa')
     if 'qa_text' not in st.session_state:
         st.session_state.qa_text = ''
     if st.session_state.get('qa_clear_text'):
@@ -211,30 +225,21 @@ def render_qa_panel():
     )
 
     history = st.session_state.get('qa_history', [])
+    latest_answer = history[-1]['a'] if history else ''
+    answer_token = int(st.session_state.get('qa_answer_play_token', 0))
     for item in history:
         st.markdown(
             f'<div class="qa-user">🙋 {item["q"]}</div>', unsafe_allow_html=True
         )
         st.markdown(f'<div class="qa-ai">🤖 {item["a"]}</div>', unsafe_allow_html=True)
 
-    if history and st.session_state.get('qa_new_answer'):
-        ans = history[-1]['a'].replace("'", "\\'").replace('\n', ' ')
-        st.iframe(
-            f"""
-<script>
-(function(){{
-  {make_speak_fn(allow_generation=True)}
-  setTimeout(()=>speak('{ans}',()=>{{
-    setTimeout(()=>speak('다시 질문하려면 스페이스, 요약으로 돌아가려면 백스페이스 를 눌러주세요.'),300);
-  }}),300);
-}})();
-</script>
-""",
-            height=1,
-        )
-        st.session_state.qa_new_answer = False
-
-    st.iframe(_QA_HTML.replace('__SPEAK_FN__', make_speak_fn()), height=180)
+    qa_html = (
+        _QA_HTML.replace('__SPEAK_FN__', make_speak_fn(allow_generation=True))
+        .replace('__INTRO_TOKEN__', str(intro_token))
+        .replace('__LATEST_ANSWER__', json.dumps(latest_answer, ensure_ascii=False))
+        .replace('__ANSWER_TOKEN__', str(answer_token))
+    )
+    st.components.v1.html(qa_html, height=180)
 
     question = st.text_area(
         'qa_text',
@@ -258,6 +263,9 @@ def render_qa_panel():
         st.markdown('<div class="btn-sec">', unsafe_allow_html=True)
         if st.button('←   요약', width='stretch', key='qa_back'):
             st.session_state.active_panel = 'summary'
+            st.session_state.summary_play_token = (
+                int(st.session_state.get('summary_play_token', 0)) + 1
+            )
             st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
     with c4:
@@ -280,5 +288,8 @@ def _ask(question: str):
             answer = f'오류: {exc}'
     st.session_state.qa_history.append({'q': question, 'a': answer})
     st.session_state.qa_new_answer = True
+    st.session_state.qa_answer_play_token = (
+        int(st.session_state.get('qa_answer_play_token', 0)) + 1
+    )
     st.session_state.qa_clear_text = True
     st.rerun()
