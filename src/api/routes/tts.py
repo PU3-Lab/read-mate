@@ -17,7 +17,7 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from core.config import DEV_MODE, ELEVENLABS_API_KEY, TMP_DIR
+from core.config import ELEVENLABS_API_KEY, TMP_DIR, is_dev_mode
 from core.exceptions import TTSGenerationError
 from services.static_tts_cache import StaticTTSAudioCache
 from services.tts_edge import DEFAULT_VOICE as EDGE_DEFAULT_VOICE
@@ -141,7 +141,7 @@ async def speak_text(req: SpeakRequest) -> StreamingResponse:
         HTTPException 400: API 키 미설정
         HTTPException 500: TTS 합성 실패
     """
-    if not DEV_MODE and not ELEVENLABS_API_KEY:
+    if not is_dev_mode() and not ELEVENLABS_API_KEY:
         raise HTTPException(status_code=400, detail='ELEVENLABS_API_KEY가 설정되어 있지 않습니다.')
 
     try:
@@ -171,9 +171,9 @@ async def speak_text(req: SpeakRequest) -> StreamingResponse:
                 detail='이 텍스트는 정적 TTS가 존재하지 않으며, 동적 생성(allow_generation)이 허용되지 않았습니다.'
             )
 
-        if DEV_MODE:
+        if is_dev_mode():
             tts_engine = EdgeTTSEngine()
-            result = await tts_engine.synthesize(req.text, EDGE_DEFAULT_VOICE)
+            result = tts_engine.synthesize(req.text, EDGE_DEFAULT_VOICE)
             tts_source = 'edge'
         else:
             tts_engine = ElevenLabsTTS(api_key=ELEVENLABS_API_KEY)

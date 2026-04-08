@@ -289,6 +289,7 @@ def create_default_reading_pipeline() -> ReadingPipeline:
     """
     import os
 
+    from core.config import is_dev_mode
     from services.llm_remote import RemoteLLM
     from services.ocr_service import Qwen2VLEngine
     from services.pdf_service import PyPDFEngine
@@ -298,8 +299,7 @@ def create_default_reading_pipeline() -> ReadingPipeline:
     from services.tts_unavailable import UnavailableTTSEngine
 
     ocr = Qwen2VLEngine()
-    dev_mode = os.environ.get('APP_ENV', 'prod') == 'dev'
-    if dev_mode:
+    if is_dev_mode():
         logger.info('[tts] dev 모드: EdgeTTSEngine 사용')
         tts_engine: BaseTTS = EdgeTTSEngine()
     else:

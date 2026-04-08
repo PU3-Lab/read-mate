@@ -25,15 +25,15 @@ DEFAULT_VOICE = 'ko-KR-SunHiNeural'
 def _run_async(coro):
     """동기 메서드에서 async 함수를 안전하게 실행한다."""
     try:
-        asyncio.get_running_loop()
+        loop = asyncio.get_running_loop()
+        if loop.is_running():
+            # 루프가 이미 실행 중이면 새로운 스레드에서 실행하여 블로킹 회피
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                return executor.submit(asyncio.run, coro).result()
+        return asyncio.run(coro)
     except RuntimeError:
         return asyncio.run(coro)
-
-    loop = asyncio.new_event_loop()
-    try:
-        return loop.run_until_complete(coro)
-    finally:
-        loop.close()
 
 
 class EdgeTTSEngine(BaseTTS):
@@ -42,11 +42,12 @@ class EdgeTTSEngine(BaseTTS):
     상태가 없으므로 싱글톤 불필요.
     인터넷 연결이 필요하며 API 키는 불필요하다.
     """
-
-class EdgeTTSEngine(BaseTTS):
     _voices_cache: dict[str, str] | None = None
 
-    async def synthesize(self, text: str, voice_preset: str = DEFAULT_VOICE) -> TTSResult:
+    def synthesize(self, text: str, voice_preset: str = DEFAULT_VOICE) -> TTSResult:
+        return _run_async(self._synthesize_async(text, voice_preset))
+
+    async def _synthesize_async(self, text: str, voice_preset: str = DEFAULT_VOICE) -> TTSResult:
         if not text.strip():
             raise TTSGenerationError('TTS 입력 텍스트가 비어 있습니다.')
 
@@ -96,7 +97,8 @@ class EdgeTTSEngine(BaseTTS):
 
     def list_presets(self) -> list[str]:
         """사용 가능한 Edge TTS 한국어 화자 목록 반환."""
-        return list(self._get_voice_map().keys())
+        voice_map = _run_async(self._get_voice_map())
+        return list(voice_map.keys())
 
     @staticmethod
     def _resolve_voice_id(voice_preset: str, voice_map: dict[str, str]) -> str:
