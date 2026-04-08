@@ -21,11 +21,7 @@ __SPEAK_FN__
 
   setTimeout(()=>{
     speak(
-      '강의 자료 분석입니다. ' +
-      '1번, 파일 업로드. ' +
-      '2번, 카메라 촬영. ' +
-      '숫자키 1 또는 2를 눌러 선택하세요. ' +
-      'Backspace 를 누르면 홈으로 돌아갑니다.'
+      '강의 자료 분석입니다. 1번, 파일 업로드. 2번, 카메라 촬영. 숫자키 1 또는 2를 눌러 선택하세요. 백스페이스 를 누르면 홈으로 돌아갑니다.'
     );
   }, 500);
 
@@ -34,9 +30,9 @@ __SPEAK_FN__
       if(b._rmA) return; b._rmA=true;
       b.addEventListener('focus', ()=>{
         const t = b.innerText.trim();
-        if(t.includes('파일 업로드'))   speak('1번, 파일 업로드 버튼입니다. Enter 를 눌러주세요.');
-        if(t.includes('카메라 촬영'))   speak('2번, 카메라 촬영 버튼입니다. Enter 를 눌러주세요.');
-        if(t.includes('분석 시작'))     speak('분석 시작 버튼입니다. Enter 를 눌러주세요.');
+        if(t.includes('파일 업로드'))   speak('일번, 파일 업로드 버튼입니다. 엔터를 눌러주세요.');
+        if(t.includes('카메라 촬영'))   speak('이번, 카메라 촬영 버튼입니다. 엔터를 눌러주세요.');
+        if(t.includes('분석 시작'))     speak('분석 시작 버튼입니다. 엔터를 눌러주세요.');
       });
     });
   }
@@ -80,9 +76,7 @@ __SPEAK_FN__
 
   setTimeout(()=>{
     speak(
-      '파일 업로드 모드입니다. ' +
-      'Tab 키를 눌러 파일 선택 버튼으로 이동하세요. ' +
-      'Backspace 를 누르면 모드 선택으로 돌아갑니다.'
+      '파일 업로드 모드입니다. 탭 키를 눌러 파일 선택 버튼으로 이동하세요. 백스페이스 를 누르면 모드 선택으로 돌아갑니다.'
     );
   }, 400);
 
@@ -93,7 +87,7 @@ __SPEAK_FN__
     if(!fname) return;
     announced = true;
     const name = fname.textContent.trim();
-    speak(`${name} 파일이 선택되었습니다. Tab 키를 눌러 분석 시작 버튼으로 이동한 뒤 Enter 를 눌러주세요.`, ()=>{
+    speak(`${name} 파일이 선택되었습니다. 탭 키를 눌러 분석 시작 버튼으로 이동한 뒤 엔터를 눌러주세요.`, ()=>{
       const btns = window.parent.document.querySelectorAll('button');
       for(const b of btns){ if(b.innerText.includes('분석 시작')){ b.focus(); break; } }
     });
@@ -105,7 +99,7 @@ __SPEAK_FN__
       if(b._rmA) return; b._rmA=true;
       b.addEventListener('focus', ()=>{
         const t = b.innerText.trim();
-        if(t.includes('분석 시작')) speak('분석 시작 버튼입니다. Enter 를 눌러주세요.');
+        if(t.includes('분석 시작')) speak('분석 시작 버튼입니다. 엔터를 눌러주세요.');
         if(t.includes('모드 선택')) speak('모드 선택으로 돌아가기 버튼입니다.');
       });
     });
@@ -204,7 +198,7 @@ __SPEAK_FN__
       });
       vid.srcObject = stream;
       status.textContent = '📷 문서를 화면에 맞춰주세요';
-      speak('카메라가 준비되었습니다. 문서를 화면 가득 채운 뒤 Space 를 눌러 촬영하세요.');
+      speak('카메라가 준비되었습니다. 문서를 화면 가득 채운 뒤 스페이스를 눌러 촬영하세요.');
     }catch(err){
       status.textContent = '⚠️ 카메라 접근이 거부되었습니다.';
       speak('카메라 접근이 거부되었습니다. 브라우저에서 카메라 권한을 허용한 뒤 다시 시도해주세요.');
@@ -225,7 +219,7 @@ __SPEAK_FN__
     use.style.display   = '';
     captured = true;
     status.textContent = '촬영 완료! 이미지를 확인하세요.';
-    speak('촬영되었습니다. Enter 를 누르면 분석을 시작합니다. R 을 누르면 다시 촬영합니다.');
+    speak('촬영되었습니다. 엔터를 누르면 분석을 시작합니다. 알을 누르면 다시 촬영합니다.');
     window.parent.postMessage({type:'rm_camera', dataUrl:dataUrl}, '*');
   }
 
@@ -237,7 +231,7 @@ __SPEAK_FN__
     use.style.display   = 'none';
     captured = false;
     status.textContent = '📷 문서를 화면에 맞춰주세요';
-    speak('다시 촬영합니다. 문서를 화면에 맞추고 Space 를 눌러 촬영하세요.');
+    speak('다시 촬영합니다. 문서를 화면에 맞추고 스페이스를 눌러 촬영하세요.');
     window.parent.postMessage({type:'rm_camera', dataUrl:null}, '*');
   }
 
@@ -319,7 +313,7 @@ def _camera_result_js() -> str:
 <script>
 (function(){{
   {make_speak_fn()}
-  setTimeout(()=>speak('촬영된 이미지입니다. Enter 로 분석을 시작하거나 R 로 다시 촬영하세요.'),400);
+  setTimeout(()=>speak('촬영된 이미지입니다. 엔터로 분석을 시작하거나 R키 로 다시 촬영하세요.'),400);
   function onKey(e){{
     const tag=e.target.tagName;
     if(tag==='INPUT'||tag==='TEXTAREA')return;

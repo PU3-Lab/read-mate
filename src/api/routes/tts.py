@@ -27,6 +27,21 @@ router = APIRouter(prefix='/api/tts')
 static_tts_cache = StaticTTSAudioCache()
 
 
+def _append_missing_text_once(log_path: Path, text: str) -> None:
+    """같은 누락 문장이 반복 기록되지 않도록 로그를 유일값으로 유지한다."""
+    existing = set()
+    if log_path.exists():
+        existing = {
+            line.strip()
+            for line in log_path.read_text(encoding='utf-8').splitlines()
+            if line.strip()
+        }
+    if text in existing:
+        return
+    existing.add(text)
+    log_path.write_text('\n'.join(sorted(existing)) + '\n', encoding='utf-8')
+
+
 class VoiceCloneResponse(BaseModel):
     """보이스 클론 생성 응답."""
 
@@ -143,15 +158,13 @@ async def speak_text(req: SpeakRequest) -> StreamingResponse:
 
         if not req.allow_generation:
             logger.warning('[tts] missing static text: %r', req.text)
-            
-            # 없는 TTS 파일 로그로 남겨두기
+
             log_path = Path('data/static_tts/missing_texts.log')
             log_path.parent.mkdir(parents=True, exist_ok=True)
-            with log_path.open('a', encoding='utf-8') as f:
-                f.write(f"{req.text}\n")
-                
+            _append_missing_text_once(log_path, req.text)
+
             raise HTTPException(
-                status_code=400, 
+                status_code=400,
                 detail='이 텍스트는 정적 TTS가 존재하지 않으며, 동적 생성(allow_generation)이 허용되지 않았습니다.'
             )
 

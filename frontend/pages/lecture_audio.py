@@ -17,7 +17,7 @@ __SPEAK_FN__
   // 진입 안내 → 업로드 버튼 포커스
   function init(){
     speak(
-      '강의 녹음 분석입니다. Tab 키를 눌러 파일 업로드 버튼으로 이동하세요. 파일을 선택하면 안내해드립니다.',
+      '강의 녹음 분석입니다. 탭 키를 눌러 파일 업로드 버튼으로 이동하세요. 파일을 선택하면 안내해드립니다.',
       ()=>{
         const btn=window.parent.document.querySelector('[data-testid="stFileUploaderDropzoneInput"]');
         if(btn) btn.focus();
@@ -33,7 +33,7 @@ __SPEAK_FN__
       b._rmAttached=true;
       b.addEventListener('focus',()=>{
         const t=b.innerText.trim();
-        if(t.includes('분석 시작')) speak('분석 시작 버튼입니다. Enter 를 눌러주세요.');
+        if(t.includes('분석 시작')) speak('분석 시작 버튼입니다. 엔터를 눌러주세요.');
         else if(t.includes('돌아가기')) speak('홈화면으로 돌아가기 버튼입니다.');
       });
     });
@@ -52,7 +52,7 @@ __SPEAK_FN__
     announced=true;
     const name=fname?fname.textContent.trim():'녹음 파일';
     speak(`${name} 파일이 선택되었습니다.`,()=>{
-      speak('Tab 키를 눌러 분석 시작 버튼으로 이동한 뒤 Enter 를 눌러주세요.',()=>{
+      speak('탭 키를 눌러 분석 시작 버튼으로 이동한 뒤 엔터를 눌러주세요.',()=>{
         const btns=window.parent.document.querySelectorAll('button');
         for(const b of btns){if(b.innerText.includes('분석 시작')){b.focus();break;}}
       });

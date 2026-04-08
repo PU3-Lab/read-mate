@@ -11,7 +11,7 @@ __SPEAK_FN__
 
   function init(){
     speak(
-      '내 목소리 설정입니다. 화자 이름을 입력하고, WAV 파일을 업로드한 뒤 등록 버튼을 눌러주세요.',
+      '내 목소리 설정입니다. 화자 이름을 입력하고, 오디오 파일을 업로드한 뒤 등록 버튼을 눌러주세요.',
       ()=>{
         const inp=window.parent.document.querySelector('input[type="text"]');
         if(inp) inp.focus();
@@ -26,7 +26,7 @@ __SPEAK_FN__
       b._rmAttached=true;
       b.addEventListener('focus',()=>{
         const t=b.innerText.trim();
-        if(t.includes('목소리 등록')) speak('목소리 등록 버튼입니다. Enter 를 눌러주세요.');
+        if(t.includes('목소리 등록')) speak('목소리 등록 버튼입니다. 엔터를 눌러주세요.');
         else if(t.includes('ReadMate')) speak('홈화면으로 돌아가기 버튼입니다.');
       });
     });

@@ -124,7 +124,7 @@ body{background:transparent;font-family:'Gowun Dodum',sans-serif;}
     } else {
       rec.stop();
       setIdle();
-      speak('녹음이 중지되었습니다. 전송하기 버튼을 누르세요.');
+      speak('녹음이 중지되었습니다. 엔터를 눌러 전송하세요.');
     }
   }
 
@@ -160,7 +160,7 @@ body{background:transparent;font-family:'Gowun Dodum',sans-serif;}
   try{window.parent.document.addEventListener('keydown',onKey);}catch(err){}
 
   setTimeout(()=>speak(
-    '질의응답 화면입니다. Space 를 눌러 질문을 하고, 다시 Space 로 중지한 뒤 Enter 로 전송하세요. Backspace 를 누르면 요약화면 으로 돌아갑니다.'
+    '질의응답 화면입니다. 스페이스키 를 눌러 질문을 하고, 다시 스페이크키 로 중지한 뒤 엔터키 로 전송하세요. 백스페이스 를 누르면 요약화면 으로 돌아갑니다.'
   ),400);
 })();
 </script>
@@ -223,9 +223,9 @@ def render_qa_panel():
             f"""
 <script>
 (function(){{
-  {make_speak_fn()}
+  {make_speak_fn(allow_generation=True)}
   setTimeout(()=>speak('{ans}',()=>{{
-    setTimeout(()=>speak('다시 질문하려면 Space, 요약으로 돌아가려면 Backspace 를 눌러주세요.'),300);
+    setTimeout(()=>speak('다시 질문하려면 스페이스, 요약으로 돌아가려면 백스페이스 를 눌러주세요.'),300);
   }}),300);
 }})();
 </script>
