@@ -6,25 +6,39 @@ from pipelines import answer_question
 _QA_HTML = """
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
-body{background:transparent;font-family:'Gowun Dodum',sans-serif;}
+body{
+  background:transparent;font-family:'Gowun Dodum',sans-serif;
+  --bg:         #faf5f0;
+  --surface:    #edddd0;
+  --surface2:   #e0ccbb;
+  --border:     #7a5540;
+  --accent:     #8c2e10;
+  --accent2:    #1a6b55;
+  --text:       #1a0f0a;
+  --text-muted: #3d2010;
+}
 #wrap{
-  background:#fff8f2;border:2px solid #f0cbb0;
+  background:var(--surface);border:2px solid var(--border);
   border-radius:20px;padding:1.8rem 1.6rem;text-align:center;
+  outline:none;transition:all .15s ease-out;
+}
+#wrap:focus{
+  border-color:var(--accent);box-shadow:0 10px 25px rgba(140,46,16,.2);background:var(--surface2);
 }
 #icon{font-size:2.2rem;margin-bottom:.5rem;}
 #icon.pulse{animation:pulse 1s infinite;}
 @keyframes pulse{0%,100%{transform:scale(1);opacity:1;}50%{transform:scale(1.15);opacity:.7;}}
-#status{font-size:1rem;font-weight:800;color:#3d2f24;margin-bottom:.3rem;}
-#hint{font-size:.78rem;color:#b09a88;font-weight:700;line-height:1.8;margin-bottom:1rem;}
+#status{font-size:1rem;font-weight:800;color:var(--text);margin-bottom:.3rem;}
+#hint{font-size:.78rem;color:var(--text-muted);font-weight:700;line-height:1.8;margin-bottom:1rem;}
 #send-btn{
-  background:linear-gradient(135deg,#ff7e5f,#f9a03f);color:#fff;
+  background:var(--accent);color:#fff;
   border:none;border-radius:50px;padding:.6rem 0;
   font-size:.9rem;font-weight:700;cursor:pointer;width:100%;
-  box-shadow:0 3px 10px rgba(255,126,95,.3);
+  box-shadow:0 3px 10px rgba(140,46,16,.3);
 }
 #send-btn:hover{opacity:.88;}
 </style>
-<div id="wrap">
+<div id="wrap" tabindex="0">
   <div id="icon">🎤</div>
   <div id="status">Space 를 눌러 질문을 말씀하세요</div>
   <div id="hint">Space : 녹음 시작/중지 &nbsp;|&nbsp; Enter : 전송 &nbsp;|&nbsp; Backspace : 요약으로</div>

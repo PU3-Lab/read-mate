@@ -92,16 +92,65 @@ _HOME_A11Y_TEMPLATE = """
 __SPEAK_FN__
 
   function attachFocus(){
+    // 1. Feature Cards
+    window.parent.document.querySelectorAll('.feature-card').forEach(c=>{
+      if(c._rmA)return; c._rmA=true;
+      if(!c.getAttribute('tabindex')) c.setAttribute('tabindex', '0');
+      
+      c.addEventListener('focus',()=>{
+        const title=c.querySelector('.feature-title').innerText.trim();
+        speak(title + ' 기능을 선택했습니다. 엔터를 누르면 시작합니다.');
+      });
+      c.addEventListener('click', ()=>{
+        const btn = c.closest('[data-testid="stVerticalBlock"]').querySelector('button');
+        if(btn) btn.click();
+      });
+      c.addEventListener('keydown', (e)=>{
+        if(e.key==='Enter'){
+          const btn = c.closest('[data-testid="stVerticalBlock"]').querySelector('button');
+          if(btn) btn.click();
+        }
+      });
+    });
+
+    // 2. Buttons
     window.parent.document.querySelectorAll('button').forEach(b=>{
       if(b._rmA)return; b._rmA=true;
       b.addEventListener('focus',()=>{
         const t=b.innerText.trim();
-        if(t.includes('1번')) speak('첫번째 버튼, 강의 녹음 분석입니다. 엔터를 누르면 시작합니다.');
-        else if(t.includes('2번')) speak('두번째 버튼, 강의 자료 분석입니다. 엔터를 누르면 시작합니다.');
-        else if(t.includes('3번')) speak('세번째 버튼, 내 목소리 설정입니다. 엔터를 누르면 시작합니다.');
+        if(t.includes('1번')) speak('첫번째 기능, 강의 녹음 분석입니다. 엔터를 누르면 시작합니다.');
+        else if(t.includes('2번')) speak('두번째 기능, 강의 자료 분석입니다. 엔터를 누르면 시작합니다.');
+        else if(t.includes('3번')) speak('세번째 기능, 내 목소리 설정입니다. 엔터를 누르면 시작합니다.');
+        else speak(t + ' 버튼입니다.');
       });
     });
   }
+
+  // Focus Trapping (Streamlit UI 안에서만 이동)
+  function handleTab(e) {
+    if (e.key !== 'Tab') return;
+    const doc = window.parent.document;
+    const focusables = Array.from(doc.querySelectorAll('button, [tabindex="0"], input, textarea, select'))
+      .filter(el => el.offsetWidth > 0 && el.offsetHeight > 0);
+    
+    if (focusables.length === 0) return;
+    
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    
+    if (e.shiftKey) {
+      if (doc.activeElement === first) {
+        last.focus();
+        e.preventDefault();
+      }
+    } else {
+      if (doc.activeElement === last) {
+        first.focus();
+        e.preventDefault();
+      }
+    }
+  }
+
   const obs=new MutationObserver(attachFocus);
   obs.observe(window.parent.document.body,{childList:true,subtree:true});
   setTimeout(attachFocus,800);
@@ -110,11 +159,14 @@ __SPEAK_FN__
     if(active)return; active=true;
     document.getElementById('wake').style.display='none';
     document.getElementById('hint').style.display='block';
+    
+    window.parent.document.addEventListener('keydown', handleTab);
+
     speak(
       '리드메이트입니다. 소리로 읽는 강의자료, 배움의 끝이 없도록 우리 함께 공부해요. 탭키를 눌러 버튼으로 이동하세요. 첫번째 버튼은 강의 녹음 분석, 두번째 버튼은 강의 자료 분석, 세번째 버튼은 내 목소리 설정입니다. 엔터 를 눌러 선택하세요.',
       ()=>{
-        const btns=window.parent.document.querySelectorAll('button');
-        for(const b of btns){if(b.innerText.includes('1번')){b.focus();break;}}
+        const cards=window.parent.document.querySelectorAll('.feature-card');
+        if(cards.length > 0) cards[0].focus();
       }
     );
   }
@@ -169,7 +221,7 @@ if st.session_state.feature is None:
     with c1:
         st.markdown(
             """
-<div class="feature-card">
+<div class="feature-card" tabindex="0">
   <div class="feature-icon">🎧</div>
   <div class="feature-title">강의 녹음 분석</div>
   <div class="feature-desc">녹음 파일을 올리면<br>요약·퀴즈·질의응답을 제공해요</div>
@@ -184,7 +236,7 @@ if st.session_state.feature is None:
     with c2:
         st.markdown(
             """
-<div class="feature-card">
+<div class="feature-card" tabindex="0">
   <div class="feature-icon">📄</div>
   <div class="feature-title">강의 자료 분석</div>
   <div class="feature-desc">PDF 또는 이미지를 올리면<br>요약·퀴즈·질의응답을 제공해요</div>
@@ -199,7 +251,7 @@ if st.session_state.feature is None:
     with c3:
         st.markdown(
             """
-<div class="feature-card">
+<div class="feature-card" tabindex="0">
   <div class="feature-icon">🎙</div>
   <div class="feature-title">내 목소리 설정</div>
   <div class="feature-desc">WAV 파일을 올리면<br>내 목소리로 읽어드려요</div>
