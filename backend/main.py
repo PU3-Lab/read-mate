@@ -51,17 +51,21 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        'http://localhost:28501',
-        'http://127.0.0.1:28501',
-    ],
+    allow_origins=['*'],
     allow_credentials=True,
     allow_methods=['*'],
     allow_headers=['*'],
 )
 
-app.include_router(http_routes.router)
+@app.middleware('http')
+async def log_requests(request, call_next):
+    logger.info(f'[http] {request.method} {request.url.path}')
+    response = await call_next(request)
+    logger.info(f'[http] {request.method} {request.url.path} - {response.status_code}')
+    return response
+
 app.include_router(tts_routes.router)
+app.include_router(http_routes.router)
 app.include_router(ws_routes.router)
 
 
