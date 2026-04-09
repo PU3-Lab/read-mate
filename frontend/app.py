@@ -98,6 +98,26 @@ html,body{overflow:hidden;margin:0;padding:0;}
   let active=false;
 __SPEAK_FN__
 
+  // 이전 페이지의 높은 우선순위 오디오 상태가 남아 홈 안내를 막는 것을 방지
+  (function(){
+    const s = __rmOwner.__rmAudioState;
+    if (!s) return;
+    if (s.pendingController) {
+      try { s.pendingController.abort(); } catch(e) {}
+      s.pendingController = null;
+    }
+    const a = s.currentAudio || __rmOwner.__rmCurrentAudio;
+    if (a) { try { a.pause(); } catch(e) {} }
+    s.currentAudio = null;
+    s.activePriority = 0;
+    s.currentToken = 0;
+    __rmOwner.__rmCurrentAudio = null;
+    // 각 패널의 "이미 재생함" 토큰도 초기화해 다음 분석 시 재생이 막히지 않게 함
+    __rmOwner.__rmSummaryPlayToken = null;
+    __rmOwner.__rmLastPlayedToken = null;
+    __rmOwner.__rmMemoPlayToken = null;
+  })();
+
   function disableOwnFrame(){
     try{
       if(!window.frameElement) return;
