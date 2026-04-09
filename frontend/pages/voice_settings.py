@@ -174,6 +174,23 @@ def render() -> None:
 
     st.divider()
 
+    # ── 재생 속도 설정 ────────────────────────
+    st.markdown('#### 재생 속도 설정')
+    _speed_options = [round(i * 0.1, 1) for i in range(1, 21)]  # 0.1 ~ 2.0
+    _current_speed = st.session_state.get('voice_speed', 1.0)
+    _nearest = min(_speed_options, key=lambda x: abs(x - _current_speed))
+    selected_speed = st.select_slider(
+        '재생 속도',
+        options=_speed_options,
+        value=_nearest,
+        format_func=lambda x: f'{x:.1f}',
+        label_visibility='collapsed',
+    )
+    st.session_state.voice_speed = selected_speed
+    st.caption('기본값 1.0 · 최소 0.1 · 최대 2.0')
+
+    st.divider()
+
     # ── 새 목소리 클론 등록 ───────────────────
     st.markdown('#### 새 목소리 등록 (Voice Clone)')
 

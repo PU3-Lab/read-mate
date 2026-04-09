@@ -54,6 +54,7 @@ def init():
         'qa_new_answer': False,
         'qa_answer_play_token': 0,
         'selected_voice': 'JiYeong Kang',
+        'voice_speed': 1.0,
     }
     for k, v in defaults.items():
         if k not in st.session_state:
