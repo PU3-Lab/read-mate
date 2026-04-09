@@ -193,6 +193,7 @@ def render_summary_panel():
   function playCachedSummary() {{
     if (!cachedAudioSrc) return;
     const audio = new Audio(cachedAudioSrc);
+    audio.playbackRate = __rmOwner.__rmVoiceSpeed || 1.0;
     audio.onended = () => {{
       try {{
         if (window.parent.__rmCurrentAudio === audio) window.parent.__rmCurrentAudio = null;

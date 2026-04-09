@@ -38,6 +38,7 @@ def render_tts_panel():
             (function(){{
               {make_speak_fn(priority='summary')}
               const a=document.getElementById('ae');
+              a.playbackRate=(__rmOwner.__rmVoiceSpeed)||1.0;
               function ownAudio(){{
                 claimAudio(a,'summary',Date.now());
               }}

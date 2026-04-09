@@ -26,6 +26,11 @@ def get_selected_voice(default: str = 'JiYeong Kang') -> str:
     return str(st.session_state.get('selected_voice', default))
 
 
+def get_voice_speed(default: float = 1.0) -> float:
+    """세션에 저장된 재생 속도를 반환한다."""
+    return float(st.session_state.get('voice_speed', default))
+
+
 def js_string(value: str) -> str:
     """JS 문자열 리터럴로 안전하게 넣기 위한 JSON 인코딩."""
     return json.dumps(value, ensure_ascii=False)
@@ -47,6 +52,7 @@ def make_speak_fn(
     server_url: str | None = None,
     allow_generation: bool = False,
     priority: str = 'normal',
+    voice_speed: float | None = None,
 ) -> str:
     """
     ElevenLabs TTS를 사용하는 JS speak(t, cb) 함수 코드를 반환한다.
@@ -63,9 +69,11 @@ def make_speak_fn(
     """
     resolved_voice = voice_name or get_selected_voice()
     resolved_server = (server_url or get_server_url()).rstrip('/')
+    resolved_speed = voice_speed if voice_speed is not None else get_voice_speed()
     voice_js = js_string(resolved_voice)
     server_js = js_string(resolved_server)
     priority_js = js_string(priority)
+    speed_js = str(round(resolved_speed, 2))
     return (
         f"  const __rmOwner = (() => {{\n"
         f"    try {{ return window.parent || window; }} catch (err) {{ return window; }}\n"
@@ -79,6 +87,7 @@ def make_speak_fn(
         f"    }};\n"
         f"  }}\n"
         f"  if (!__rmOwner.__rmSpokenKeys) __rmOwner.__rmSpokenKeys = {{}};\n"
+        f"  __rmOwner.__rmVoiceSpeed = {speed_js};\n"
         f"  function rmPriorityValue(level) {{\n"
         f"    if (level === 'summary') return 100;\n"
         f"    if (level === 'high') return 50;\n"
@@ -172,6 +181,7 @@ def make_speak_fn(
         f"      const url_blob = URL.createObjectURL(blob);\n"
         f"      if (state.currentToken !== token) {{ URL.revokeObjectURL(url_blob); return; }}\n"
         f"      const audio = new Audio(url_blob);\n"
+        f"      audio.playbackRate = __rmOwner.__rmVoiceSpeed || 1.0;\n"
         f"      claimAudio(audio, priorityLevel, token);\n"
         f"      audio.onended = () => {{ \n"
         f"        URL.revokeObjectURL(url_blob); \n"
@@ -196,7 +206,7 @@ def make_speak_fn(
         f"      if (!synth) {{ finish(); return; }}\n"
         f"      const u = new SpeechSynthesisUtterance(t);\n"
         f"      u.lang = 'ko-KR';\n"
-        f"      u.rate = 1.0;\n"
+        f"      u.rate = __rmOwner.__rmVoiceSpeed || 1.0;\n"
         f"      u.onend = finish;\n"
         f"      u.onerror = finish;\n"
         f"      synth.speak(u);\n"
