@@ -14,7 +14,7 @@ html, body{
   margin:0;
   padding:0;
   width:100%;
-  height:210px;
+  height:160px;
   overflow:hidden;
 }
 *{box-sizing:border-box;margin:0;padding:0;}
@@ -33,7 +33,7 @@ body{
 }
 #wrap{
   width:100%;
-  height:210px;
+  height:160px;
   overflow:hidden;
   background:var(--surface);
   border:2px solid var(--border);
@@ -73,39 +73,22 @@ body{
   color:var(--text-muted);
   font-weight:700;
   line-height:1.5;
-  margin-bottom:.9rem;
 }
-#send-btn{
-  background:var(--accent);
-  color:#fff;
-  border:none;
-  border-radius:50px;
-  padding:.62rem 0;
-  font-size:.9rem;
-  font-weight:700;
-  cursor:pointer;
-  width:100%;
-  box-shadow:0 3px 10px rgba(140,46,16,.3);
-  flex-shrink:0;
-}
-#send-btn:hover{opacity:.88;}
 </style>
 
 <div id="wrap" tabindex="0">
   <div id="icon">🎤</div>
   <div id="status">Space 를 눌러 질문을 말씀하세요</div>
-  <div id="hint">Space : 녹음 시작/중지 &nbsp;|&nbsp; Enter : 전송 &nbsp;|&nbsp; Backspace : 요약으로</div>
-  <button id="send-btn">질문 전송 (Enter)</button>
+  <div id="hint">Space : 녹음 시작 → 다시 Space : 종료 후 자동 전송 &nbsp;|&nbsp; Backspace : 요약으로</div>
 </div>
 
 <script>
 (function(){
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  let rec = null, recording = false, transcript = '';
+  let rec = null, recording = false, transcript = '', autoSend = false;
 
   const icon   = document.getElementById('icon');
   const status = document.getElementById('status');
-  const btn    = document.getElementById('send-btn');
 
   __SPEAK_FN__
 
@@ -170,7 +153,8 @@ body{
     };
 
     rec.onend = () => {
-      if(recording) rec.start();
+      if(recording) { rec.start(); return; }
+      if(autoSend) { autoSend = false; send(); }
     };
 
     rec.onerror = () => {
@@ -210,9 +194,13 @@ body{
       setRec();
       speak('녹음을 시작합니다.');
     } else {
+      recording = false;
+      autoSend = true;
+      icon.className = '';
+      icon.textContent = '📤';
+      status.textContent = '전송 중...';
+      speak('녹음이 중지되었습니다. 질문을 전송합니다.');
       rec.stop();
-      setIdle();
-      speak('녹음이 중지되었습니다. 엔터를 눌러 전송하세요.');
     }
   }
 
@@ -231,8 +219,6 @@ body{
     }
   }
 
-  btn.addEventListener('click', send);
-
   function onKey(e){
     const tag = e.target.tagName;
     if(tag === 'INPUT' || tag === 'TEXTAREA') return;
@@ -240,11 +226,6 @@ body{
     if(e.code === 'Space'){
       e.preventDefault();
       toggle();
-    }
-
-    if(e.code === 'Enter'){
-      e.preventDefault();
-      send();
     }
 
     if(e.key === 'Backspace'){
@@ -268,7 +249,7 @@ body{
 
   setTimeout(()=>speakOnce(
     `qa-intro:__INTRO_TOKEN__`,
-    '질의응답 화면입니다. 스페이스키 를 눌러 질문을 하고, 다시 스페이스키 로 중지한 뒤 엔터키 로 전송하세요. 백스페이스 를 누르면 요약화면 으로 돌아갑니다.'
+    '질의응답 화면입니다. 스페이스키 를 눌러 질문을 한 뒤, 다시 스페이스키 를 누르면 자동으로 전송됩니다. 백스페이스 를 누르면 요약화면 으로 돌아갑니다.'
   ),400);
 })();
 </script>
@@ -292,6 +273,8 @@ _QA_DOM_BRIDGE_HTML = """
       for(const button of buttons){
         if(button.innerText && button.innerText.includes('전송하기')){
           button.setAttribute('data-rmqa-send', '1');
+          const wrap = button.closest('[data-testid="stButton"]') || button.parentElement;
+          if(wrap) wrap.style.display = 'none';
         }
       }
     } catch (e) {}
@@ -340,7 +323,7 @@ def render_qa_panel():
     qa_html = _QA_HTML.replace(
         '__SPEAK_FN__', make_speak_fn(allow_generation=True)
     ).replace('__INTRO_TOKEN__', str(intro_token))
-    st.components.v1.html(qa_html, height=210)
+    st.components.v1.html(qa_html, height=160)
 
     question = st.text_area(
         'qa_text',
@@ -350,12 +333,9 @@ def render_qa_panel():
         label_visibility='collapsed',
     )
 
-    c1, c2 = st.columns([5, 2])
-    with c1:
-        st.caption('질문 입력 후 전송하기 버튼을 누르세요.')
-    with c2:
-        if st.button('전송하기', key='qa_send', width='stretch') and question.strip():
-            _ask(question.strip())
+    # 전송 트리거 버튼 — JS에서 클릭, DOM bridge가 시각적으로 숨김
+    if st.button('전송하기', key='qa_send') and question.strip():
+        _ask(question.strip())
 
     st.components.v1.html(_QA_DOM_BRIDGE_HTML, height=0)
 
