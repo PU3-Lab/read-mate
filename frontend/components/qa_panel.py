@@ -123,15 +123,6 @@ body{
     return textarea ? (textarea.value || '') : '';
   }
 
-  function findParentSendButton(){
-    const doc = window.parent.document;
-    return (
-      doc.querySelector('button[data-rmqa-send="1"]')
-      || Array.from(doc.querySelectorAll('button')).find(
-        (button) => button.innerText && button.innerText.includes('전송하기')
-      )
-    );
-  }
 
   function initRec(){
     if(!SR) return;
@@ -204,19 +195,24 @@ body{
     }
   }
 
+  function findParentSubmitButton(){
+    const doc = window.parent.document;
+    return (
+      doc.querySelector('button[data-rmqa-send="1"]')
+      || doc.querySelector('[data-testid="stFormSubmitButton"] button')
+    );
+  }
+
   function send(){
-    const question = getParentTextareaValue().trim();
-    transcript = question;
+    const question = (getParentTextareaValue() || transcript).trim();
     if(!question){
       speak('먼저 질문을 말씀해주세요.');
       return;
     }
-    speak('질문을 전송합니다. 잠시 기다려주세요.');
     setParentTextareaValue(question);
-    const button = findParentSendButton();
-    if(button){
-      setTimeout(() => button.click(), 50);
-    }
+    speak('질문을 전송합니다. 잠시 기다려주세요.');
+    const btn = findParentSubmitButton();
+    if(btn) btn.click();
   }
 
   function onKey(e){
@@ -233,12 +229,12 @@ body{
       speak('요약으로 돌아갑니다.', () => {
         const btns = window.parent.document.querySelectorAll('button');
         for(const b of btns){
-          if(b.innerText.includes('요약으로')){
+          if(b.innerText.includes('요약')){
             b.click();
             break;
           }
         }
-      });
+      }, {priority: 'summary'});
     }
   }
 
@@ -269,11 +265,11 @@ _QA_DOM_BRIDGE_HTML = """
         }
       }
 
-      const buttons = doc.querySelectorAll('button');
-      for(const button of buttons){
-        if(button.innerText && button.innerText.includes('전송하기')){
-          button.setAttribute('data-rmqa-send', '1');
-          const wrap = button.closest('[data-testid="stButton"]') || button.parentElement;
+      const formBtns = doc.querySelectorAll('[data-testid="stFormSubmitButton"] button');
+      for(const btn of formBtns){
+        if(btn.innerText && btn.innerText.includes('전송하기')){
+          btn.setAttribute('data-rmqa-send', '1');
+          const wrap = btn.closest('[data-testid="stFormSubmitButton"]') || btn.parentElement;
           if(wrap) wrap.style.display = 'none';
         }
       }
@@ -325,17 +321,16 @@ def render_qa_panel():
     ).replace('__INTRO_TOKEN__', str(intro_token))
     st.components.v1.html(qa_html, height=160)
 
-    question = st.text_area(
-        'qa_text',
-        key='qa_text',
-        height=100,
-        placeholder='질문을 말씀하시거나 직접 입력하세요',
-        label_visibility='collapsed',
-    )
-
-    # 전송 트리거 버튼 — JS에서 클릭, DOM bridge가 시각적으로 숨김
-    if st.button('전송하기', key='qa_send') and question.strip():
-        _ask(question.strip())
+    with st.form('qa_form', clear_on_submit=True, border=False):
+        question = st.text_area(
+            'qa_text',
+            key='qa_text',
+            height=100,
+            placeholder='질문을 말씀하시거나 직접 입력하세요',
+            label_visibility='collapsed',
+        )
+        if st.form_submit_button('전송하기') and question.strip():
+            _ask(question.strip())
 
     st.components.v1.html(_QA_DOM_BRIDGE_HTML, height=0)
 
