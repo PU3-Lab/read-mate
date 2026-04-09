@@ -211,6 +211,21 @@
       "voice_name": "*"
     },
     {
+      "text": "메모 패널 이동 버튼입니다. 엔터를 누르면 메모 패널로 이동합니다.",
+      "audio_file": "memo/focus_memo_panel_move.mp3",
+      "voice_name": "JiYeong Kang"
+    },
+    {
+      "text": "메모 패널입니다. 탭 키로 메모 목록을 이동하고, 엔터를 눌러 메모를 선택하세요.",
+      "audio_file": "memo/page_intro.mp3",
+      "voice_name": "JiYeong Kang"
+    },
+    {
+      "text": "요약 화면으로 돌아갑니다.",
+      "audio_file": "memo/go_summary_screen.mp3",
+      "voice_name": "JiYeong Kang"
+    },
+    {
       "text": "요약으로 돌아갑니다.",
       "audio_file": "common/go_summary.mp3",
       "voice_name": "*"
