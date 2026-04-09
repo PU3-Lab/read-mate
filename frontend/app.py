@@ -70,6 +70,7 @@ def load_page(name: str):
 
 _HOME_A11Y_TEMPLATE = """
 <style>
+html,body{overflow:hidden;margin:0;padding:0;}
 #wake{
   background:#fff8f2;border:2px solid #ff7e5f;border-radius:16px;
   padding:1rem 1.4rem;text-align:center;
