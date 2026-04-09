@@ -91,17 +91,15 @@ def _build_memo_signature() -> str:
     """중복 저장 방지용 현재 요약 시그니처를 만든다."""
     audio_bytes = st.session_state.get('audio_bytes') or b''
     keywords = st.session_state.get('memo_keywords', [])
-    return '\n'.join(
-        [
-            str(st.session_state.get('analysis_source_name', '')).strip(),
-            str(st.session_state.get('summary', '')).strip(),
-            str(st.session_state.get('raw_text', '')).strip(),
-            str(st.session_state.get('audio_file_name', '')).strip(),
-            str(st.session_state.get('audio_mime', '')).strip(),
-            str(len(audio_bytes)),
-            '|'.join(str(item).strip() for item in keywords if str(item).strip()),
-        ]
-    )
+    return '\n'.join([
+        str(st.session_state.get('analysis_source_name', '')).strip(),
+        str(st.session_state.get('summary', '')).strip(),
+        str(st.session_state.get('raw_text', '')).strip(),
+        str(st.session_state.get('audio_file_name', '')).strip(),
+        str(st.session_state.get('audio_mime', '')).strip(),
+        str(len(audio_bytes)),
+        '|'.join(str(item).strip() for item in keywords if str(item).strip()),
+    ])
 
 
 def _render_memo_panel() -> None:
@@ -130,6 +128,7 @@ def _render_memo_panel() -> None:
 
     selected_memo_id = _resolve_selected_memo_id(memos)
     button_specs: list[dict[str, str]] = []
+    selected_button_label = ''
 
     st.markdown(
         """
@@ -140,23 +139,35 @@ def _render_memo_panel() -> None:
         unsafe_allow_html=True,
     )
 
+    selected_detail: dict[str, object] | None = None
+    try:
+        selected_detail = load_saved_memo(selected_memo_id)
+    except FileNotFoundError:
+        st.warning('선택한 메모를 찾지 못했습니다. 다른 메모를 선택해 주세요.')
+
     for index, memo in enumerate(memos, start=1):
         memo_id = str(memo['id'])
         title = str(memo['title'])
         created_at = _format_created_at(str(memo['created_at']))
         source_name = str(memo['source_name'] or '직접 저장한 메모')
-        label = f'{index}번 메모 · {title}'
-
-        button_specs.append(
-            {
-                'button_label': label,
-                'spoken_label': (
-                    f'{index}번 메모, {title}. '
-                    f'원본 자료는 {source_name}이고 저장 시각은 {created_at}입니다. '
-                    '엔터를 누르면 메모를 엽니다.'
-                ),
-            }
+        is_selected = memo_id == selected_memo_id
+        label = (
+            f'선택됨 · {index}번 메모 · {title}'
+            if is_selected
+            else f'{index}번 메모 · {title}'
         )
+        if is_selected:
+            selected_button_label = label
+
+        button_specs.append({
+            'button_label': label,
+            'spoken_label': (
+                f'{index}번 메모, {title}. '
+                f'원본 자료는 {source_name}이고 저장 시각은 {created_at}입니다. '
+                f'{"현재 선택된 메모입니다. " if is_selected else ""}'
+                '엔터를 누르면 메모를 엽니다.'
+            ),
+        })
 
         if st.button(label, key=f'memo_select_{memo_id}', use_container_width=True):
             st.session_state.selected_memo_id = memo_id
@@ -169,15 +180,16 @@ def _render_memo_panel() -> None:
             f'원본 자료: {source_name} | 저장 시각: {created_at} | '
             f'음성 저장: {"있음" if memo["has_audio"] else "없음"}'
         )
+        if is_selected:
+            st.markdown(
+                '<div class="rm-body" style="font-size:.85rem; margin:-.25rem 0 .8rem; '
+                'color:var(--accent); font-weight:900;">현재 선택된 메모</div>',
+                unsafe_allow_html=True,
+            )
+            if selected_detail is not None:
+                _render_selected_memo_detail(selected_detail)
 
-    try:
-        detail = load_saved_memo(selected_memo_id)
-    except FileNotFoundError:
-        st.warning('선택한 메모를 찾지 못했습니다. 다른 메모를 선택해 주세요.')
-    else:
-        _render_selected_memo_detail(detail)
-
-    _render_memo_intro(intro_token, button_specs)
+    _render_memo_intro(intro_token, button_specs, selected_button_label)
     _render_memo_back_button()
 
 
@@ -194,18 +206,17 @@ def _resolve_selected_memo_id(memos: list[dict[str, object]]) -> str:
 
 
 def _render_selected_memo_detail(detail: dict[str, object]) -> None:
-    """선택된 메모의 상세 정보와 저장된 음성을 표시한다."""
+    """선택된 메모의 상세 정보를 리스트 아래에 펼쳐 보여준다."""
     title = str(detail['title'])
     created_at = _format_created_at(str(detail['created_at']))
     source_name = str(detail['source_name'] or '직접 저장한 메모')
     summary = str(detail['summary'])
     key_points = detail.get('key_points') or []
-    memo_id = str(detail['id'])
 
     st.markdown(
         f"""
 <div class="rm-summary-card">
-  <div class="rm-card-title">🗂 선택된 메모</div>
+  <div class="rm-card-title">🗂 펼쳐진 메모</div>
   <div class="rm-body" style="font-size:.92rem;">
     <strong>제목</strong> {title}<br>
     <strong>원본 자료</strong> {source_name}<br>
@@ -228,51 +239,19 @@ def _render_selected_memo_detail(detail: dict[str, object]) -> None:
 
     if key_points:
         st.markdown(
-            ''.join(
-                [
-                    '<div class="rm-summary-card"><div class="rm-card-title">🔖 핵심 포인트</div>',
-                    '<ul class="rm-body" style="margin:0; padding-left:1.2rem;">',
-                    ''.join(f'<li>{str(item)}</li>' for item in key_points),
-                    '</ul></div>',
-                ]
-            ),
+            ''.join([
+                '<div class="rm-summary-card"><div class="rm-card-title">🔖 핵심 포인트</div>',
+                '<ul class="rm-body" style="margin:0; padding-left:1.2rem;">',
+                ''.join(f'<li>{str(item)}</li>' for item in key_points),
+                '</ul></div>',
+            ]),
             unsafe_allow_html=True,
         )
 
     if detail.get('audio_bytes'):
         audio_bytes = detail['audio_bytes']
         audio_mime = str(detail.get('audio_mime') or 'audio/wav')
-        st.markdown(
-            """
-<div class="rm-card">
-  <div class="rm-card-title">🔊 저장된 음성</div>
-</div>
-""",
-            unsafe_allow_html=True,
-        )
-        st.audio(audio_bytes, format=audio_mime)
         _render_memo_audio_autoplay(audio_bytes, audio_mime)
-
-    c1, c2 = st.columns(2)
-    with c1:
-        st.download_button(
-            '메모 텍스트 다운로드',
-            data=summary.encode('utf-8'),
-            file_name=f'{memo_id}.txt',
-            mime='text/plain',
-            use_container_width=True,
-            key=f'memo_text_download_{memo_id}',
-        )
-    with c2:
-        if detail.get('audio_bytes'):
-            st.download_button(
-                '메모 음성 다운로드',
-                data=detail['audio_bytes'],
-                file_name=str(detail.get('audio_file_name') or f'{memo_id}.wav'),
-                mime=str(detail.get('audio_mime') or 'audio/wav'),
-                use_container_width=True,
-                key=f'memo_audio_download_{memo_id}',
-            )
 
 
 def _render_memo_audio_autoplay(audio_bytes: bytes, audio_mime: str) -> None:
@@ -316,15 +295,64 @@ def _render_memo_audio_autoplay(audio_bytes: bytes, audio_mime: str) -> None:
 def _render_memo_intro(
     intro_token: int,
     button_specs: list[dict[str, str]],
+    selected_button_label: str,
 ) -> None:
     """메모 목록 포커스 안내와 패널 안내 음성을 연결한다."""
     payload = json.dumps(button_specs, ensure_ascii=False)
+    selected_label = json.dumps(selected_button_label, ensure_ascii=False)
+    back_label = json.dumps('← 요약으로 돌아가기', ensure_ascii=False)
     st.iframe(
         f"""
 <script>
 (function() {{
   {make_speak_fn(allow_generation=True, priority='high')}
   const specs = {payload};
+  const selectedLabel = {selected_label};
+  const backLabel = {back_label};
+
+  function disableOwnFrame() {{
+    try {{
+      if (!window.frameElement) return;
+      window.frameElement.setAttribute('tabindex', '-1');
+      window.frameElement.setAttribute('aria-hidden', 'true');
+    }} catch (err) {{}}
+  }}
+
+  function disablePassiveIframes() {{
+    try {{
+      window.parent.document.querySelectorAll('iframe').forEach((frame) => {{
+        const rect = frame.getBoundingClientRect();
+        const height =
+          rect.height ||
+          frame.clientHeight ||
+          Number(frame.getAttribute('height') || 0);
+        if (height > 4) return;
+        frame.setAttribute('tabindex', '-1');
+        frame.setAttribute('aria-hidden', 'true');
+      }});
+    }} catch (err) {{}}
+  }}
+
+  function ensureSelectedStyle() {{
+    if (window.parent.document.getElementById('rm-memo-selected-style')) return;
+    const style = window.parent.document.createElement('style');
+    style.id = 'rm-memo-selected-style';
+    style.textContent = `
+      button.rm-memo-selected {{
+        box-shadow: 0 0 0 3px rgba(140,46,16,.18) !important;
+        border: 2px solid #8c2e10 !important;
+        transform: none !important;
+      }}
+    `;
+    window.parent.document.head.appendChild(style);
+  }}
+
+  function memoFocusables() {{
+    const buttons = visibleButtons();
+    const labels = specs.map((spec) => spec.button_label);
+    if (backLabel) labels.push(backLabel);
+    return buttons.filter((button) => labels.includes((button.innerText || '').trim()));
+  }}
 
   function visibleButtons() {{
     return Array.from(window.parent.document.querySelectorAll('button')).filter((btn) => {{
@@ -337,18 +365,77 @@ def _render_memo_intro(
   }}
 
   function bindMemoButtons() {{
+    disableOwnFrame();
+    disablePassiveIframes();
+    ensureSelectedStyle();
     const buttons = visibleButtons();
+    buttons.forEach((button) => button.classList.remove('rm-memo-selected'));
     specs.forEach((spec) => {{
       const button = buttons.find((item) => (item.innerText || '').trim() === spec.button_label);
       if (!button || button._rmMemoBound) return;
       button._rmMemoBound = true;
       button.addEventListener('focus', () => speak(spec.spoken_label));
     }});
+
+    if (selectedLabel) {{
+      const selectedButton = buttons.find(
+        (item) => (item.innerText || '').trim() === selectedLabel
+      );
+      if (selectedButton) selectedButton.classList.add('rm-memo-selected');
+    }}
+  }}
+
+  function goBackToSummary() {{
+    const buttons = visibleButtons();
+    const backButton = buttons.find(
+      (item) => (item.innerText || '').trim() === backLabel
+    );
+    if (backButton) backButton.click();
+  }}
+
+  function onTab(event) {{
+    if (event.key !== 'Tab') return;
+    const focusables = memoFocusables();
+    if (!focusables.length) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    const active = window.parent.document.activeElement;
+    const currentIndex = focusables.indexOf(active);
+    if (currentIndex === -1) {{
+      (event.shiftKey ? focusables[focusables.length - 1] : focusables[0]).focus();
+      return;
+    }}
+
+    const nextIndex = event.shiftKey
+      ? (currentIndex - 1 + focusables.length) % focusables.length
+      : (currentIndex + 1) % focusables.length;
+    focusables[nextIndex].focus();
+  }}
+
+  function onKey(event) {{
+    const tag = event.target.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+    if (event.key === 'Backspace') {{
+      event.preventDefault();
+      speak('요약 화면으로 돌아갑니다.', goBackToSummary);
+    }}
   }}
 
   bindMemoButtons();
   const observer = new MutationObserver(bindMemoButtons);
   observer.observe(window.parent.document.body, {{ childList: true, subtree: true }});
+  document.removeEventListener('keydown', onTab);
+  document.addEventListener('keydown', onTab);
+  document.removeEventListener('keydown', onKey);
+  document.addEventListener('keydown', onKey);
+  try {{
+    window.parent.document.removeEventListener('keydown', onTab);
+    window.parent.document.addEventListener('keydown', onTab);
+    window.parent.document.removeEventListener('keydown', onKey);
+    window.parent.document.addEventListener('keydown', onKey);
+  }} catch (err) {{}}
 
   setTimeout(() => {{
     speakOnce(
