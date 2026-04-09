@@ -162,6 +162,7 @@ class OpenAILLM(ChunkedLLM):
             '- QA가 아니면 qa_answer는 null로 둡니다.\n'
             '- QUIZ이면 quiz 필드에 반드시 10개의 문제를 작성합니다.\n'
             '- QUIZ가 아니면 quiz는 null로 둡니다.\n'
+            '- JSON 문자열 내부에 따옴표가 필요한 경우 반드시 \" 로 이스케이프할 것\n'
             f'- 작업 지시: {task_instruction}{retry_instruction}\n\n'
             f'본문:\n{text}\n'
             f'{question_block}\n'
@@ -195,6 +196,7 @@ class OpenAILLM(ChunkedLLM):
     def _parse_json_output(self, raw_output: str) -> dict[str, Any]:
         """
         모델 출력에서 JSON 객체를 추출해 파싱한다.
+        잘린 JSON의 경우 닫는 괄호를 보정하여 시도한다.
 
         Args:
             raw_output: 모델이 생성한 텍스트
@@ -202,17 +204,61 @@ class OpenAILLM(ChunkedLLM):
         Returns:
             dict[str, Any]: 파싱된 JSON 딕셔너리
         """
+        cleaned = raw_output.strip()
+        
+        # 1. 표준 파싱 시도
         try:
-            payload = json.loads(raw_output)
+            return json.loads(cleaned)
         except json.JSONDecodeError:
-            match = re.search(r'\{.*\}', raw_output, re.DOTALL)
-            if not match:
-                raise ValueError('JSON 객체를 찾지 못했습니다.') from None
-            payload = json.loads(match.group(0))
+            pass
 
-        if not isinstance(payload, dict):
-            raise TypeError('LLM JSON 응답은 객체여야 합니다.')
-        return payload
+        # 2. 마크다운 코드 블록 제거 후 시도
+        if '```json' in cleaned:
+            cleaned = cleaned.split('```json')[1].split('```')[0].strip()
+        elif '```' in cleaned:
+            cleaned = cleaned.split('```')[1].split('```')[0].strip()
+
+        try:
+            return json.loads(cleaned)
+        except json.JSONDecodeError:
+            pass
+
+        # 3. 정규표현식으로 { } 내용 추출 시도
+        match = re.search(r'\{.*\}', cleaned, re.DOTALL)
+        if match:
+            try:
+                return json.loads(match.group(0))
+            except json.JSONDecodeError:
+                cleaned = match.group(0)
+
+        # 4. 잘린 JSON 보정 (Truncated JSON recovery)
+        # 응답이 길어서 잘린 경우, 괄호 쌍을 맞춰서 시도해본다.
+        temp = cleaned
+        # quiz 리스트 내부에서 잘린 경우 닫아줌
+        if '"quiz": [' in temp and temp.count('[') > temp.count(']'):
+            # 마지막 요소가 불완전하면(쉼표 뒤에 아무것도 없거나 객체가 안 닫힘) 제거 시도
+            temp = temp.rstrip(', \n\t')
+            if temp.endswith('}'):
+                temp += ']'
+            else:
+                # 마지막 불완전 객체 제거
+                last_brace = temp.rfind('{')
+                if last_brace > temp.find('"quiz": ['):
+                    temp = temp[:last_brace].rstrip(', \n\t') + ']'
+        
+        # 루트 객체 닫기
+        if temp.count('{') > temp.count('}'):
+            temp = temp.rstrip(', \n\t')
+            temp += '}' * (temp.count('{') - temp.count('}'))
+
+        try:
+            payload = json.loads(temp)
+            if isinstance(payload, dict):
+                return payload
+        except json.JSONDecodeError as e:
+            logger.debug('[openai-llm] JSON recovery failed: %s', e)
+
+        raise ValueError(f'JSON 파싱에 실패했습니다: {raw_output[:100]}...')
 
     def _to_result(self, payload: dict[str, Any]) -> LLMResult:
         """

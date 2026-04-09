@@ -147,6 +147,8 @@ class GemmaLLM(ChunkedLLM):
         )
         model.to(self.device)
         model.eval()
+        model.generation_config.top_p = None
+        model.generation_config.top_k = None
 
         self.__class__._shared_processor = processor
         self.__class__._shared_model = model

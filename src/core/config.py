@@ -56,11 +56,11 @@ def is_dev_mode() -> bool:
     """실시간으로 APP_ENV 환경변수를 확인하여 dev 모드 여부를 반환한다."""
     return os.getenv('APP_ENV', 'prod') == 'dev'
 
-LLM_ENGINE: str = os.getenv('LLM_ENGINE', 'gemma')  # gemma | qwen | openai
+LLM_ENGINE: str = os.getenv('LLM_ENGINE', 'openai')  # gemma | qwen | openai
 LLM_SERVER_URL: str = os.getenv('LLM_SERVER_URL', 'http://localhost:28765')
-LLM_MODEL_DEFAULT: str = 'google/gemma-4-E4B-it'
-LLM_MODEL_LARGE: str = 'google/gemma-4-26B-A4B-it'
-LLM_MODEL_API: str = 'gpt-4.1-mini'
+LLM_MODEL_DEFAULT: str = 'google/gemma-2-9b-it'
+LLM_MODEL_LARGE: str = 'google/gemma-2-27b-it'
+LLM_MODEL_API: str = 'gpt-4o-mini'
 
 STT_MODEL: str = 'large-v3'  # faster-whisper 모델 크기
 
@@ -77,4 +77,4 @@ OCR_CONFIDENCE_THRESHOLD: float = 0.75  # 이 값 미만이면 폴백 검토
 PDF_MIN_CHARS: int = 100  # 이 값 미만이면 스캔형으로 판별
 LLM_MAX_RETRIES: int = 3
 LLM_MAX_INPUT_CHARS: int = 12000
-LLM_MAX_NEW_TOKENS: int = 768
+LLM_MAX_NEW_TOKENS: int = 1536

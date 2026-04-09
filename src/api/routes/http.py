@@ -103,7 +103,7 @@ def quiz(req: QuizRequest, request: Request) -> QuizResponse:
         raise HTTPException(status_code=422, detail='summary가 비어 있습니다.')
 
     try:
-        result = request.app.state.quiz_llm.generate(req.summary, TaskType.QUIZ)
+        result = request.app.state.llm.generate(req.summary, TaskType.QUIZ)
     except Exception as exc:
         logger.exception('[http] quiz failed')
         raise HTTPException(status_code=500, detail=str(exc)) from exc
@@ -135,7 +135,7 @@ def quiz_evaluate(req: QuizEvaluateRequest, request: Request) -> QuizEvaluateRes
         raise HTTPException(status_code=422, detail='user_answer가 비어 있습니다.')
 
     try:
-        result = request.app.state.quiz_llm.evaluate_answer(
+        result = request.app.state.llm.evaluate_answer(
             question=req.question,
             options=req.options,
             correct_index=req.correct_index,

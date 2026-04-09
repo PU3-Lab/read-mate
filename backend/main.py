@@ -23,7 +23,6 @@ from api.llm_factory import create_llm
 from api.routes import http as http_routes
 from api.routes import tts as tts_routes
 from api.routes import websocket as ws_routes
-from services.llm_gemma import GemmaLLM
 
 logging.basicConfig(
     level=logging.INFO,
@@ -38,10 +37,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """서버 시작 시 LLM 모델을 로드하고, 종료 시 정리한다."""
     logger.info('[startup] LLM 모델 로드 시작')
     app.state.llm = create_llm()
+    # 퀴즈 전용 LLM을 별도로 로드하지 않고 메인 LLM을 공유함
+    app.state.quiz_llm = app.state.llm
     logger.info('[startup] LLM 모델 로드 완료')
-    logger.info('[startup] 퀴즈 전용 Gemma4 LLM 로드 시작')
-    app.state.quiz_llm = GemmaLLM()  # 퀴즈는 항상 Gemma4 사용 (클래스 공유 모델 재사용)
-    logger.info('[startup] 퀴즈 전용 Gemma4 LLM 로드 완료')
     yield
     logger.info('[shutdown] 서버 종료')
 
