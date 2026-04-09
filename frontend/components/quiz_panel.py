@@ -395,7 +395,8 @@ body{{background:transparent;font-family:'Gowun Dodum',sans-serif;}}
   document.getElementById('bck').onclick = goBack;
   document.getElementById('qw').focus();
 
-  // 진입 안내
+  // 이전 패널의 고우선순위 오디오 상태 초기화 후 진입 안내
+  stopSpeak(true);
   setTimeout(() => {{
     speakOnce(
       `quiz-intro:${{introToken}}`,
