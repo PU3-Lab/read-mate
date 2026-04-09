@@ -23,6 +23,7 @@ class InputType(Enum):
 class TaskType(Enum):
     SUMMARIZE = 'summarize'
     QA = 'qa'
+    QUIZ = 'quiz'
 
 
 class PipelineStatus(Enum):
@@ -134,6 +135,15 @@ class LLMResult:
     key_points: list[str]
     qa_answer: str | None = None
     quiz: list[QuizItem] | None = None
+    engine: str = ''
+
+
+@dataclass
+class QuizEvalResult:
+    """퀴즈 답변 채점 결과."""
+
+    correct: bool
+    explanation: str
     engine: str = ''
 
 

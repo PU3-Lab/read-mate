@@ -29,6 +29,44 @@ class LLMResponse(BaseModel):
     engine: str
 
 
+class QuizRequest(BaseModel):
+    """퀴즈 생성 HTTP 요청."""
+
+    summary: str = Field(..., description='퀴즈를 생성할 요약 텍스트')
+
+
+class QuizItemSchema(BaseModel):
+    """퀴즈 문항."""
+
+    question: str
+    options: list[str]
+    answer_index: int
+
+
+class QuizResponse(BaseModel):
+    """퀴즈 생성 응답."""
+
+    quiz: list[QuizItemSchema]
+    engine: str
+
+
+class QuizEvaluateRequest(BaseModel):
+    """퀴즈 채점 HTTP 요청."""
+
+    question: str = Field(..., description='퀴즈 문제')
+    options: list[str] = Field(..., description='보기 목록 (4개)')
+    correct_index: int = Field(..., description='정답 인덱스 (0~3)')
+    user_answer: str = Field(..., description='사용자 음성 답변 텍스트')
+
+
+class QuizEvaluateResponse(BaseModel):
+    """퀴즈 채점 응답."""
+
+    correct: bool
+    explanation: str
+    engine: str
+
+
 class WSRequest(BaseModel):
     """WebSocket 단일 메시지 요청."""
 

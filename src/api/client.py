@@ -11,7 +11,7 @@ import json
 import requests
 import websockets
 
-from api.schemas import LLMResponse, WSResponse
+from api.schemas import LLMResponse, QuizEvaluateResponse, QuizResponse, WSResponse
 
 DEFAULT_BASE_URL = 'http://localhost:28765'
 
@@ -78,6 +78,62 @@ class LLMClient:
         )
         resp.raise_for_status()
         return LLMResponse.model_validate(resp.json())
+
+    def quiz(self, summary: str) -> QuizResponse:
+        """
+        요약 텍스트를 기반으로 퀴즈 10개를 생성 요청한다.
+
+        Args:
+            summary: 퀴즈를 생성할 요약 텍스트
+
+        Returns:
+            QuizResponse: 퀴즈 문항 목록
+
+        Raises:
+            requests.HTTPError: 서버 오류 시
+        """
+        resp = requests.post(
+            f'{self.base_url}/api/quiz',
+            json={'summary': summary},
+            timeout=self.timeout,
+        )
+        resp.raise_for_status()
+        return QuizResponse.model_validate(resp.json())
+
+    def evaluate_quiz(
+        self,
+        question: str,
+        options: list[str],
+        correct_index: int,
+        user_answer: str,
+    ) -> QuizEvaluateResponse:
+        """
+        사용자의 음성 답변을 채점 요청한다.
+
+        Args:
+            question: 퀴즈 문제 텍스트
+            options: 보기 목록
+            correct_index: 정답 인덱스
+            user_answer: 사용자 음성 인식 텍스트
+
+        Returns:
+            QuizEvaluateResponse: 정오 여부, 설명
+
+        Raises:
+            requests.HTTPError: 서버 오류 시
+        """
+        resp = requests.post(
+            f'{self.base_url}/api/quiz/evaluate',
+            json={
+                'question': question,
+                'options': options,
+                'correct_index': correct_index,
+                'user_answer': user_answer,
+            },
+            timeout=self.timeout,
+        )
+        resp.raise_for_status()
+        return QuizEvaluateResponse.model_validate(resp.json())
 
     def chat(self, messages: list[dict]) -> list[WSResponse]:
         """

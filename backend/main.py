@@ -37,6 +37,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """서버 시작 시 LLM 모델을 로드하고, 종료 시 정리한다."""
     logger.info('[startup] LLM 모델 로드 시작')
     app.state.llm = create_llm()
+    # 퀴즈 전용 LLM을 별도로 로드하지 않고 메인 LLM을 공유함
+    app.state.quiz_llm = app.state.llm
     logger.info('[startup] LLM 모델 로드 완료')
     yield
     logger.info('[shutdown] 서버 종료')
