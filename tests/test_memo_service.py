@@ -49,3 +49,32 @@ def test_list_saved_memos_orders_newest_first(monkeypatch, tmp_path: Path) -> No
     memos = memo_service.list_saved_memos()
 
     assert [memo['id'] for memo in memos] == [second['id'], first['id']]
+
+
+def test_save_summary_memo_skips_duplicate_content(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """같은 메모 내용은 중복 저장하지 않고 기존 항목을 반환해야 한다."""
+    memo_root = tmp_path / 'memos'
+    monkeypatch.setattr(
+        memo_service,
+        'memos_path',
+        lambda file_name='': memo_root / file_name if file_name else memo_root,
+    )
+
+    first = memo_service.save_summary_memo(
+        summary='같은 요약',
+        key_points=['핵심'],
+        raw_text='같은 원문',
+    )
+    second = memo_service.save_summary_memo(
+        summary='같은 요약',
+        key_points=['핵심'],
+        raw_text='같은 원문',
+    )
+
+    memos = memo_service.list_saved_memos()
+
+    assert first['id'] == second['id']
+    assert len(memos) == 1

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import mimetypes
 import uuid
 from datetime import UTC, datetime
@@ -47,6 +48,16 @@ def save_summary_memo(
     if not cleaned_summary:
         raise ValueError('summary must not be empty')
 
+    normalized_key_points = _normalize_key_points(key_points)
+    duplicate_signature = _build_duplicate_signature(
+        summary=cleaned_summary,
+        raw_text=raw_text,
+        key_points=normalized_key_points,
+    )
+    existing_item = _find_existing_memo(duplicate_signature)
+    if existing_item is not None:
+        return existing_item
+
     memo_id = uuid.uuid4().hex
     created_at = datetime.now(UTC).isoformat()
     memo_dir = _memo_dir(memo_id)
@@ -79,7 +90,8 @@ def save_summary_memo(
         'raw_text_file': raw_text_file_name,
         'audio_file': saved_audio_file_name,
         'audio_mime': saved_audio_mime,
-        'key_points': _normalize_key_points(key_points),
+        'key_points': normalized_key_points,
+        'duplicate_signature': duplicate_signature,
     }
     (memo_dir / 'memo.json').write_text(
         json.dumps(metadata, ensure_ascii=False, indent=2),
@@ -91,12 +103,7 @@ def save_summary_memo(
 def list_saved_memos() -> list[MemoListItem]:
     """저장된 메모 목록을 최신순으로 반환한다."""
     items: list[MemoListItem] = []
-    for memo_dir in memos_path().iterdir():
-        if not memo_dir.is_dir():
-            continue
-        metadata = _read_metadata(memo_dir)
-        if not metadata:
-            continue
+    for metadata in _iter_memo_metadata():
         items.append(_to_list_item(metadata))
     return sorted(items, key=lambda item: item['created_at'], reverse=True)
 
@@ -167,6 +174,19 @@ def _read_metadata(memo_dir: Path) -> dict[str, object] | None:
     return payload
 
 
+def _iter_memo_metadata() -> list[dict[str, object]]:
+    """유효한 메모 메타데이터를 모두 반환한다."""
+    items: list[dict[str, object]] = []
+    for memo_dir in memos_path().iterdir():
+        if not memo_dir.is_dir():
+            continue
+        metadata = _read_metadata(memo_dir)
+        if not metadata:
+            continue
+        items.append(metadata)
+    return items
+
+
 def _normalize_audio_file_name(
     audio_file_name: str | None,
     audio_mime: str | None,
@@ -194,6 +214,51 @@ def _normalize_key_points(
         values = [str(key_points)]
 
     return [text for text in (str(item).strip() for item in values) if text]
+
+
+def _build_duplicate_signature(
+    summary: str,
+    raw_text: str,
+    key_points: list[str],
+) -> str:
+    """같은 메모 여부를 판별할 시그니처를 생성한다."""
+    normalized_summary = ' '.join(str(summary).split())
+    normalized_raw_text = ' '.join(str(raw_text).split())
+    normalized_key_points = '|'.join(' '.join(point.split()) for point in key_points)
+    payload = '\n'.join([normalized_summary, normalized_raw_text, normalized_key_points])
+    return hashlib.sha256(payload.encode('utf-8')).hexdigest()
+
+
+def _find_existing_memo(duplicate_signature: str) -> MemoListItem | None:
+    """같은 메모가 이미 저장되어 있으면 해당 목록 항목을 반환한다."""
+    for metadata in _iter_memo_metadata():
+        existing_signature = str(metadata.get('duplicate_signature') or '').strip()
+        if existing_signature:
+            if existing_signature == duplicate_signature:
+                return _to_list_item(metadata)
+            continue
+
+        memo_dir = _memo_dir(str(metadata.get('id') or ''))
+        summary_file = str(metadata.get('summary_file') or 'summary.txt').strip()
+        raw_text_file = str(metadata.get('raw_text_file') or '').strip()
+        summary_path = memo_dir / summary_file
+        if not summary_path.exists():
+            continue
+
+        raw_text = ''
+        if raw_text_file:
+            raw_text_path = memo_dir / raw_text_file
+            if raw_text_path.exists():
+                raw_text = raw_text_path.read_text(encoding='utf-8')
+
+        fallback_signature = _build_duplicate_signature(
+            summary=summary_path.read_text(encoding='utf-8'),
+            raw_text=raw_text,
+            key_points=_normalize_key_points(metadata.get('key_points')),
+        )
+        if fallback_signature == duplicate_signature:
+            return _to_list_item(metadata)
+    return None
 
 
 def _build_title(summary: str, source_name: str) -> str:
