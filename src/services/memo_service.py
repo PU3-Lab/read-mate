@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import json
 import hashlib
+import json
 import mimetypes
 import uuid
 from datetime import UTC, datetime
@@ -177,7 +177,11 @@ def _read_metadata(memo_dir: Path) -> dict[str, object] | None:
 def _iter_memo_metadata() -> list[dict[str, object]]:
     """유효한 메모 메타데이터를 모두 반환한다."""
     items: list[dict[str, object]] = []
-    for memo_dir in memos_path().iterdir():
+    memo_root = memos_path()
+    if not memo_root.exists():
+        return items
+
+    for memo_dir in memo_root.iterdir():
         if not memo_dir.is_dir():
             continue
         metadata = _read_metadata(memo_dir)
