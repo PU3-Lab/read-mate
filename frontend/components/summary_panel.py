@@ -54,7 +54,6 @@ def render_summary_panel():
     audio_mime = st.session_state.get('audio_mime') or 'audio/wav'
     audio_file_name = st.session_state.get('audio_file_name') or 'readmate.wav'
     has_cached_audio = bool(audio)
-    has_quiz = bool(st.session_state.get('quiz', []))
     if not summary:
         return
 
@@ -161,6 +160,13 @@ def render_summary_panel():
                     st.session_state.quiz = _fetch_quiz(summary)
             st.session_state.active_panel = 'quiz'
             st.rerun()
+
+    if st.session_state.get('feature') == 'material':
+        st.markdown('<div class="btn-sec">', unsafe_allow_html=True)
+        if st.button('메모 패널', use_container_width=True, key='sum_memo'):
+            st.session_state.active_panel = 'memo'
+            st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
 
     # ── 자동 낭독 + 전역 키 ───────────────────────
     kw = ', '.join(keywords) if keywords else ''

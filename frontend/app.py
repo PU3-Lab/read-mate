@@ -53,6 +53,10 @@ def init():
         'summary_play_token': 0,
         'qa_new_answer': False,
         'qa_answer_play_token': 0,
+        'analysis_source_name': '',
+        'memo_autosaved_key': '',
+        'selected_memo_id': '',
+        'memo_play_token': 0,
         'selected_voice': 'JiYeong Kang',
         'voice_speed': 1.0,
     }
@@ -277,7 +281,7 @@ if st.session_state.feature is None:
 <div class="feature-card" tabindex="0">
   <div class="feature-icon">📄</div>
   <div class="feature-title">강의 자료 분석</div>
-  <div class="feature-desc">PDF 또는 이미지를 올리면<br>요약·퀴즈·질의응답을 제공해요</div>
+  <div class="feature-desc">PDF 또는 <br>이미지를 올리면<br>요약·퀴즈·질의응답을 제공해요</div>
 </div>
 """,
             unsafe_allow_html=True,
@@ -292,7 +296,7 @@ if st.session_state.feature is None:
 <div class="feature-card" tabindex="0">
   <div class="feature-icon">🎙</div>
   <div class="feature-title">내 목소리 설정</div>
-  <div class="feature-desc">WAV 파일을 올리면<br>내 목소리로 읽어드려요</div>
+  <div class="feature-desc">음성 파일을 올리면<br>원하는 목소리로<br>읽어드려요</div>
 </div>
 """,
             unsafe_allow_html=True,

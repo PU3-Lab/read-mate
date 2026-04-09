@@ -44,6 +44,12 @@ def static_tts_path(file_name: str = '') -> Path:
     return _static_tts_path / file_name if file_name else _static_tts_path
 
 
+def memos_path(file_name: str = '') -> Path:
+    _memos_path = data_path() / 'memos'
+    _memos_path.mkdir(parents=True, exist_ok=True)
+    return _memos_path / file_name if file_name else _memos_path
+
+
 def images_path() -> Path:
     return data_path() / 'images'
 

@@ -40,13 +40,18 @@ __SPEAK_FN__
     });
   }
 
-  function getModeCards(){
-    return Array.from(window.parent.document.querySelectorAll('.feature-card'))
-      .filter(card=>{
-        const style = window.parent.getComputedStyle(card);
-        if (style.display === 'none' || style.visibility === 'hidden') return false;
-        return card.offsetWidth > 0 || card.offsetHeight > 0;
-      });
+  function isVisible(node){
+    const style = window.parent.getComputedStyle(node);
+    if (style.display === 'none' || style.visibility === 'hidden') return false;
+    return node.offsetWidth > 0 || node.offsetHeight > 0;
+  }
+
+  function getModeFocusables(){
+    const cards = Array.from(window.parent.document.querySelectorAll('.feature-card'))
+      .filter(card=>isVisible(card));
+    const memoBtn = Array.from(window.parent.document.querySelectorAll('button'))
+      .find(button=>(button.innerText || '').trim() === '메모 패널 이동' && isVisible(button));
+    return memoBtn ? [...cards, memoBtn] : cards;
   }
 
   setTimeout(()=>{
@@ -63,12 +68,24 @@ __SPEAK_FN__
     // 1. Buttons
     window.parent.document.querySelectorAll('button').forEach(b=>{
       if(b._rmA) return; b._rmA=true;
-      b.setAttribute('tabindex', '-1');
+      const text = b.innerText.trim();
+      if(text === '메모 패널 이동'){
+        b.setAttribute('tabindex', '0');
+      }else{
+        b.setAttribute('tabindex', '-1');
+      }
       b.addEventListener('focus', ()=>{
         const t = b.innerText.trim();
         if(t.includes('파일 업로드'))   speak('일번, 파일 업로드 버튼입니다. 엔터를 눌러주세요.');
         if(t.includes('카메라 촬영'))   speak('이번, 카메라 촬영 버튼입니다. 엔터를 눌러주세요.');
         if(t.includes('분석 시작'))     speak('분석 시작 버튼입니다. 엔터를 눌러주세요.');
+        if(t.includes('메모 패널 이동')) speak('메모 패널 이동 버튼입니다. 엔터를 누르면 메모 패널로 이동합니다.');
+      });
+      b.addEventListener('keydown', (e)=>{
+        if(text === '메모 패널 이동' && e.key === 'Enter'){
+          e.preventDefault();
+          b.click();
+        }
       });
     });
 
@@ -98,23 +115,23 @@ __SPEAK_FN__
   // Focus Trapping
   function handleTab(e) {
     if (e.key !== 'Tab') return;
-    const cards = getModeCards();
-    if (cards.length === 0) return;
+    const focusables = getModeFocusables();
+    if (focusables.length === 0) return;
 
     e.preventDefault();
     e.stopPropagation();
 
     const active = window.parent.document.activeElement;
-    const currentIndex = cards.indexOf(active);
+    const currentIndex = focusables.indexOf(active);
     if (currentIndex === -1) {
-      (e.shiftKey ? cards[cards.length - 1] : cards[0]).focus();
+      (e.shiftKey ? focusables[focusables.length - 1] : focusables[0]).focus();
       return;
     }
 
     const nextIndex = e.shiftKey
-      ? (currentIndex - 1 + cards.length) % cards.length
-      : (currentIndex + 1) % cards.length;
-    cards[nextIndex].focus();
+      ? (currentIndex - 1 + focusables.length) % focusables.length
+      : (currentIndex + 1) % focusables.length;
+    focusables[nextIndex].focus();
   }
   function bindTabHandler(){
     try{
@@ -496,7 +513,10 @@ def render() -> None:
     # 공통 브릿지 (항상 렌더)
     st.iframe(_BRIDGE_JS, height=1)
 
-    if st.session_state.get('processing_job'):
+    if st.session_state.get('active_panel') == 'memo':
+        render_result_panel()
+
+    elif st.session_state.get('processing_job'):
         render_result_panel()
         _continue_processing()
 
@@ -551,6 +571,16 @@ def render() -> None:
                 ):
                     st.session_state.input_mode = 'camera'
                     st.rerun()
+
+            st.markdown('<div class="btn-sec">', unsafe_allow_html=True)
+            if st.button(
+                '메모 패널 이동',
+                key='move_material_memo_panel',
+                use_container_width=True,
+            ):
+                st.session_state.active_panel = 'memo'
+                st.rerun()
+            st.markdown('</div>', unsafe_allow_html=True)
 
             st.iframe(_intro_js(), height=1)
 
@@ -742,6 +772,8 @@ def _run(file_name: str, content: bytes) -> bool:
     st.session_state.summary_play_token = 0
     st.session_state.qa_new_answer = False
     st.session_state.qa_answer_play_token = 0
+    st.session_state.analysis_source_name = file_name
+    st.session_state.memo_autosaved_key = ''
     return True
 
 
@@ -775,6 +807,8 @@ def _queue_processing(file_name: str, content: bytes) -> None:
     st.session_state.summary_play_token = 0
     st.session_state.qa_new_answer = False
     st.session_state.qa_answer_play_token = 0
+    st.session_state.analysis_source_name = file_name
+    st.session_state.memo_autosaved_key = ''
 
 
 # ── 진행 메시지별 TTS 문구 매핑 ─────────────────────────
@@ -953,6 +987,8 @@ def _reset():
         'summary_play_key',
         'summary_play_token',
         'qa_answer_play_token',
+        'analysis_source_name',
+        'memo_autosaved_key',
     ]:
         st.session_state[k] = (
             None
