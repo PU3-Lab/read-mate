@@ -89,7 +89,7 @@ body{{background:transparent;font-family:'Gowun Dodum',sans-serif;}}
   <div class="br">
     <button class="btn sec" id="re" style="display:none">다시 듣기 (L)</button>
     <button class="btn sec" id="rty" style="display:none">처음 (R)</button>
-    <button class="btn sec" id="bck">요약으로 (Backspace)</button>
+    <button class="btn sec" id="bck">다음 문제로 (Backspace)</button>
   </div>
   <div id="sc" aria-live="polite"></div>
 </div>
