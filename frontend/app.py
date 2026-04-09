@@ -92,31 +92,117 @@ _HOME_A11Y_TEMPLATE = """
   let active=false;
 __SPEAK_FN__
 
+  function disableOwnFrame(){
+    try{
+      if(!window.frameElement) return;
+      window.frameElement.setAttribute('tabindex', '-1');
+      window.frameElement.setAttribute('aria-hidden', 'true');
+    }catch(err){}
+  }
+
+  function getFeatureCards(){
+    return Array.from(window.parent.document.querySelectorAll('.feature-card'))
+      .filter(card=>{
+        const style = window.parent.getComputedStyle(card);
+        if (style.display === 'none' || style.visibility === 'hidden') return false;
+        return card.offsetWidth > 0 || card.offsetHeight > 0;
+      });
+  }
+
   function attachFocus(){
+    disableOwnFrame();
+
+    // 1. Feature Cards
+    window.parent.document.querySelectorAll('.feature-card').forEach(c=>{
+      if(c._rmA)return; c._rmA=true;
+      if(!c.getAttribute('tabindex')) c.setAttribute('tabindex', '0');
+      
+      c.addEventListener('focus',()=>{
+        const title=c.querySelector('.feature-title').innerText.trim();
+        if(title.includes('녹음')) speak('첫번째 버튼, 강의 녹음 분석입니다. 엔터를 누르면 시작합니다.');
+        else if(title.includes('자료')) speak('두번째 버튼, 강의 자료 분석입니다. 엔터를 누르면 시작합니다.');
+        else if(title.includes('목소리')) speak('세번째 버튼, 내 목소리 설정입니다. 엔터를 누르면 시작합니다.');
+        else speak(title + ' 기능을 선택했습니다. 엔터를 누르면 시작합니다.');
+      });
+      c.addEventListener('click', ()=>{
+        const btn = c.closest('[data-testid="stVerticalBlock"]').querySelector('button');
+        if(btn) btn.click();
+      });
+      c.addEventListener('keydown', (e)=>{
+        if(e.key==='Enter'){
+          const btn = c.closest('[data-testid="stVerticalBlock"]').querySelector('button');
+          if(btn) btn.click();
+        }
+      });
+    });
+
+    // 2. Buttons (탭 순서에서 제외하여 카드만 선택되게 함)
     window.parent.document.querySelectorAll('button').forEach(b=>{
       if(b._rmA)return; b._rmA=true;
+      b.setAttribute('tabindex', '-1');
       b.addEventListener('focus',()=>{
         const t=b.innerText.trim();
         if(t.includes('1번')) speak('첫번째 버튼, 강의 녹음 분석입니다. 엔터를 누르면 시작합니다.');
         else if(t.includes('2번')) speak('두번째 버튼, 강의 자료 분석입니다. 엔터를 누르면 시작합니다.');
         else if(t.includes('3번')) speak('세번째 버튼, 내 목소리 설정입니다. 엔터를 누르면 시작합니다.');
+        else speak(t + ' 버튼입니다.');
       });
     });
   }
+
+  // Focus Trapping (Streamlit UI 안에서만 이동)
+  function handleTab(e) {
+    if (e.key !== 'Tab') return;
+    const cards = getFeatureCards();
+    if (cards.length === 0) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    const activeEl = window.parent.document.activeElement;
+    const currentIndex = cards.indexOf(activeEl);
+    if (currentIndex === -1) {
+      (e.shiftKey ? cards[cards.length - 1] : cards[0]).focus();
+      return;
+    }
+
+    const nextIndex = e.shiftKey
+      ? (currentIndex - 1 + cards.length) % cards.length
+      : (currentIndex + 1) % cards.length;
+    cards[nextIndex].focus();
+  }
+
+  function bindTabHandler(){
+    try{
+      if(window.parent._rmTabHandler){
+        window.parent.document.removeEventListener('keydown', window.parent._rmTabHandler);
+      }
+      window.parent._rmTabHandler = handleTab;
+      window.parent.document.addEventListener('keydown', window.parent._rmTabHandler);
+    }catch(err){}
+
+    document.removeEventListener('keydown', handleTab);
+    document.addEventListener('keydown', handleTab);
+  }
+
   const obs=new MutationObserver(attachFocus);
   obs.observe(window.parent.document.body,{childList:true,subtree:true});
-  setTimeout(attachFocus,800);
+  attachFocus();
+  bindTabHandler();
+  setTimeout(attachFocus,150);
 
   function activate(){
     if(active)return; active=true;
     document.getElementById('wake').style.display='none';
     document.getElementById('hint').style.display='block';
+    bindTabHandler();
+
     speakOnce(
       `home-intro:__INTRO_TOKEN__`,
       '리드메이트입니다. 소리로 읽는 강의자료, 배움의 끝이 없도록 우리 함께 공부해요. 탭키를 눌러 버튼으로 이동하세요. 첫번째 버튼은 강의 녹음 분석, 두번째 버튼은 강의 자료 분석, 세번째 버튼은 내 목소리 설정입니다. 엔터 를 눌러 선택하세요.',
       ()=>{
-        const btns=window.parent.document.querySelectorAll('button');
-        for(const b of btns){if(b.innerText.includes('1번')){b.focus();break;}}
+        const cards=getFeatureCards();
+        if(cards.length > 0) cards[0].focus();
       }
     );
   }
@@ -134,11 +220,9 @@ __SPEAK_FN__
 
 def _home_a11y_js() -> str:
     intro_token = get_announcement_token('home')
-    return (
-        _HOME_A11Y_TEMPLATE.replace('__SPEAK_FN__', make_speak_fn()).replace(
-            '__INTRO_TOKEN__',
-            str(intro_token),
-        )
+    return _HOME_A11Y_TEMPLATE.replace('__SPEAK_FN__', make_speak_fn()).replace(
+        '__INTRO_TOKEN__',
+        str(intro_token),
     )
 
 
@@ -173,7 +257,7 @@ if st.session_state.feature is None:
     with c1:
         st.markdown(
             """
-<div class="feature-card">
+<div class="feature-card" tabindex="0">
   <div class="feature-icon">🎧</div>
   <div class="feature-title">강의 녹음 분석</div>
   <div class="feature-desc">녹음 파일을 올리면<br>요약·퀴즈·질의응답을 제공해요</div>
@@ -188,7 +272,7 @@ if st.session_state.feature is None:
     with c2:
         st.markdown(
             """
-<div class="feature-card">
+<div class="feature-card" tabindex="0">
   <div class="feature-icon">📄</div>
   <div class="feature-title">강의 자료 분석</div>
   <div class="feature-desc">PDF 또는 이미지를 올리면<br>요약·퀴즈·질의응답을 제공해요</div>
@@ -203,7 +287,7 @@ if st.session_state.feature is None:
     with c3:
         st.markdown(
             """
-<div class="feature-card">
+<div class="feature-card" tabindex="0">
   <div class="feature-icon">🎙</div>
   <div class="feature-title">내 목소리 설정</div>
   <div class="feature-desc">WAV 파일을 올리면<br>내 목소리로 읽어드려요</div>

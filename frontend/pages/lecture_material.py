@@ -19,6 +19,36 @@ _INTRO_TEMPLATE = """
 (function(){
 __SPEAK_FN__
 
+  function disableOwnFrame(){
+    try{
+      if(!window.frameElement) return;
+      window.frameElement.setAttribute('tabindex', '-1');
+      window.frameElement.setAttribute('aria-hidden', 'true');
+    }catch(err){}
+  }
+
+  function disablePassiveIframes(){
+    window.parent.document.querySelectorAll('iframe').forEach(frame=>{
+      const rect = frame.getBoundingClientRect();
+      const height =
+        rect.height ||
+        frame.clientHeight ||
+        Number(frame.getAttribute('height') || 0);
+      if (height > 4) return;
+      frame.setAttribute('tabindex', '-1');
+      frame.setAttribute('aria-hidden', 'true');
+    });
+  }
+
+  function getModeCards(){
+    return Array.from(window.parent.document.querySelectorAll('.feature-card'))
+      .filter(card=>{
+        const style = window.parent.getComputedStyle(card);
+        if (style.display === 'none' || style.visibility === 'hidden') return false;
+        return card.offsetWidth > 0 || card.offsetHeight > 0;
+      });
+  }
+
   setTimeout(()=>{
     speakOnce(
       `material-mode:__INTRO_TOKEN__`,
@@ -27,8 +57,13 @@ __SPEAK_FN__
   }, 500);
 
   function attachFocus(){
+    disableOwnFrame();
+    disablePassiveIframes();
+
+    // 1. Buttons
     window.parent.document.querySelectorAll('button').forEach(b=>{
       if(b._rmA) return; b._rmA=true;
+      b.setAttribute('tabindex', '-1');
       b.addEventListener('focus', ()=>{
         const t = b.innerText.trim();
         if(t.includes('파일 업로드'))   speak('일번, 파일 업로드 버튼입니다. 엔터를 눌러주세요.');
@@ -36,10 +71,69 @@ __SPEAK_FN__
         if(t.includes('분석 시작'))     speak('분석 시작 버튼입니다. 엔터를 눌러주세요.');
       });
     });
+
+    // 2. Feature Cards
+    window.parent.document.querySelectorAll('.feature-card').forEach(c=>{
+      if(c._rmA)return; c._rmA=true;
+      if(!c.getAttribute('tabindex')) c.setAttribute('tabindex', '0');
+      c.addEventListener('focus',()=>{
+        const title=c.querySelector('.feature-title').innerText.trim();
+        if(title.includes('파일 업로드')) speak('일번, 파일 업로드 버튼입니다. 엔터를 눌러주세요.');
+        else if(title.includes('카메라 촬영')) speak('이번, 카메라 촬영 버튼입니다. 엔터를 눌러주세요.');
+        else speak(title + ' 모드를 선택했습니다. 엔터를 누르면 시작합니다.');
+      });
+      c.addEventListener('click', ()=>{
+        const btn = c.closest('[data-testid="stVerticalBlock"]').querySelector('button');
+        if(btn) btn.click();
+      });
+      c.addEventListener('keydown', (e)=>{
+        if(e.key==='Enter'){
+          const btn = c.closest('[data-testid="stVerticalBlock"]').querySelector('button');
+          if(btn) btn.click();
+        }
+      });
+    });
   }
+
+  // Focus Trapping
+  function handleTab(e) {
+    if (e.key !== 'Tab') return;
+    const cards = getModeCards();
+    if (cards.length === 0) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    const active = window.parent.document.activeElement;
+    const currentIndex = cards.indexOf(active);
+    if (currentIndex === -1) {
+      (e.shiftKey ? cards[cards.length - 1] : cards[0]).focus();
+      return;
+    }
+
+    const nextIndex = e.shiftKey
+      ? (currentIndex - 1 + cards.length) % cards.length
+      : (currentIndex + 1) % cards.length;
+    cards[nextIndex].focus();
+  }
+  function bindTabHandler(){
+    try{
+      if(window.parent._rmTabHandler){
+        window.parent.document.removeEventListener('keydown', window.parent._rmTabHandler);
+      }
+      window.parent._rmTabHandler = handleTab;
+      window.parent.document.addEventListener('keydown', window.parent._rmTabHandler);
+    }catch(err){}
+
+    document.removeEventListener('keydown', handleTab);
+    document.addEventListener('keydown', handleTab);
+  }
+
   const obs = new MutationObserver(attachFocus);
   obs.observe(window.parent.document.body, {childList:true, subtree:true});
-  setTimeout(attachFocus, 800);
+  attachFocus();
+  bindTabHandler();
+  setTimeout(attachFocus, 150);
 
   function onKey(e){
     const tag = e.target.tagName;
@@ -75,6 +169,27 @@ _UPLOAD_TEMPLATE = """
 (function(){
 __SPEAK_FN__
 
+  function disableOwnFrame(){
+    try{
+      if(!window.frameElement) return;
+      window.frameElement.setAttribute('tabindex', '-1');
+      window.frameElement.setAttribute('aria-hidden', 'true');
+    }catch(err){}
+  }
+
+  function disablePassiveIframes(){
+    window.parent.document.querySelectorAll('iframe').forEach(frame=>{
+      const rect = frame.getBoundingClientRect();
+      const height =
+        rect.height ||
+        frame.clientHeight ||
+        Number(frame.getAttribute('height') || 0);
+      if (height > 4) return;
+      frame.setAttribute('tabindex', '-1');
+      frame.setAttribute('aria-hidden', 'true');
+    });
+  }
+
   setTimeout(()=>{
     speakOnce(
       `material-upload:__INTRO_TOKEN__`,
@@ -97,6 +212,9 @@ __SPEAK_FN__
   obs.observe(window.parent.document.body, {childList:true, subtree:true, characterData:true});
 
   function attachFocus(){
+    disableOwnFrame();
+    disablePassiveIframes();
+
     window.parent.document.querySelectorAll('button').forEach(b=>{
       if(b._rmA) return; b._rmA=true;
       b.addEventListener('focus', ()=>{
@@ -108,7 +226,8 @@ __SPEAK_FN__
   }
   const obs2 = new MutationObserver(attachFocus);
   obs2.observe(window.parent.document.body, {childList:true, subtree:true});
-  setTimeout(attachFocus, 800);
+  attachFocus();
+  setTimeout(attachFocus, 150);
 
   function onKey(e){
     const tag = e.target.tagName;
@@ -265,6 +384,13 @@ __SPEAK_FN__
 
 _BRIDGE_JS = """
 <script>
+try{
+  if(window.frameElement){
+    window.frameElement.setAttribute('tabindex', '-1');
+    window.frameElement.setAttribute('aria-hidden', 'true');
+  }
+}catch(err){}
+
 window.addEventListener('message', function(e){
   if(!e.data) return;
   const btns = window.parent.document.querySelectorAll('button');
@@ -395,7 +521,7 @@ def render() -> None:
             with c1:
                 st.markdown(
                     """
-                <div class="feature-card">
+                <div class="feature-card" tabindex="0">
                   <div class="feature-icon">📁</div>
                   <div class="feature-title">파일 업로드</div>
                   <div class="feature-desc">PDF 또는 이미지 파일을<br>직접 올려 분석해요</div>
@@ -412,7 +538,7 @@ def render() -> None:
             with c2:
                 st.markdown(
                     """
-                <div class="feature-card">
+                <div class="feature-card" tabindex="0">
                   <div class="feature-icon">📷</div>
                   <div class="feature-title">카메라 촬영</div>
                   <div class="feature-desc">카메라로 문서를 촬영하면<br>바로 분석해드려요</div>

@@ -30,8 +30,9 @@ html, body, [data-testid="stAppViewContainer"] {
 }
 [data-testid="stAppViewContainer"] > .main { background: var(--bg) !important; }
 [data-testid="block-container"] { padding-top: 1.5rem !important; max-width: 860px !important; }
-#MainMenu, footer, header { visibility: hidden !important; }
+#MainMenu, footer, header { display: none !important; }
 [data-testid="stToolbar"] { display: none !important; }
+[data-testid="stSidebar"] { display: none !important; }
 
 /* ── 배경 도트 패턴 ── */
 [data-testid="stAppViewContainer"]::before {
@@ -132,16 +133,23 @@ html, body, [data-testid="stAppViewContainer"] {
   padding: 2rem 1.6rem;
   text-align: center;
   box-shadow: var(--shadow);
-  transition: border-color .2s, transform .15s;
+  transition: all .15s ease-out;
   position: relative; z-index: 1;
   height: 300px;
   margin-bottom: 1rem;
   box-sizing: border-box;
+  cursor: pointer;
 }
-.feature-card:hover {
+.feature-card:hover, .feature-card:focus {
   border-color: var(--accent);
+  transform: translateY(-5px);
+  box-shadow: 0 10px 25px rgba(140,46,16,.2);
+  background: var(--surface2);
+  outline: none;
+}
+.feature-card:active {
   transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(192,90,58,.12);
+  box-shadow: 0 4px 10px rgba(140,46,16,.15);
 }
 .feature-icon { font-size: 2.8rem; margin-bottom: .7rem; }
 .feature-title {
