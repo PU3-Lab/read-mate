@@ -496,7 +496,10 @@ def render() -> None:
     # 공통 브릿지 (항상 렌더)
     st.iframe(_BRIDGE_JS, height=1)
 
-    if st.session_state.get('processing_job'):
+    if st.session_state.get('active_panel') == 'memo':
+        render_result_panel()
+
+    elif st.session_state.get('processing_job'):
         render_result_panel()
         _continue_processing()
 
@@ -551,6 +554,16 @@ def render() -> None:
                 ):
                     st.session_state.input_mode = 'camera'
                     st.rerun()
+
+            st.markdown('<div class="btn-sec">', unsafe_allow_html=True)
+            if st.button(
+                '메모 패널 이동',
+                key='move_material_memo_panel',
+                use_container_width=True,
+            ):
+                st.session_state.active_panel = 'memo'
+                st.rerun()
+            st.markdown('</div>', unsafe_allow_html=True)
 
             st.iframe(_intro_js(), height=1)
 
@@ -742,6 +755,8 @@ def _run(file_name: str, content: bytes) -> bool:
     st.session_state.summary_play_token = 0
     st.session_state.qa_new_answer = False
     st.session_state.qa_answer_play_token = 0
+    st.session_state.analysis_source_name = file_name
+    st.session_state.memo_autosaved_key = ''
     return True
 
 
@@ -775,6 +790,8 @@ def _queue_processing(file_name: str, content: bytes) -> None:
     st.session_state.summary_play_token = 0
     st.session_state.qa_new_answer = False
     st.session_state.qa_answer_play_token = 0
+    st.session_state.analysis_source_name = file_name
+    st.session_state.memo_autosaved_key = ''
 
 
 # ── 진행 메시지별 TTS 문구 매핑 ─────────────────────────
@@ -953,6 +970,8 @@ def _reset():
         'summary_play_key',
         'summary_play_token',
         'qa_answer_play_token',
+        'analysis_source_name',
+        'memo_autosaved_key',
     ]:
         st.session_state[k] = (
             None

@@ -220,6 +220,8 @@ def _run(file_name: str, audio_bytes: bytes) -> bool:
     st.session_state.summary_play_token = 0
     st.session_state.qa_new_answer = False
     st.session_state.qa_answer_play_token = 0
+    st.session_state.analysis_source_name = file_name
+    st.session_state.memo_autosaved_key = ''
     return True
 
 
@@ -253,6 +255,8 @@ def _queue_processing(file_name: str, audio_bytes: bytes) -> None:
     st.session_state.summary_play_token = 0
     st.session_state.qa_new_answer = False
     st.session_state.qa_answer_play_token = 0
+    st.session_state.analysis_source_name = file_name
+    st.session_state.memo_autosaved_key = ''
 
 
 _PROGRESS_TTS: dict[str, str] = {
@@ -395,6 +399,8 @@ def _reset():
         'summary_play_key',
         'summary_play_token',
         'qa_answer_play_token',
+        'analysis_source_name',
+        'memo_autosaved_key',
     ]:
         st.session_state[k] = (
             None

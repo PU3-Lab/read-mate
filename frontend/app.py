@@ -53,6 +53,10 @@ def init():
         'summary_play_token': 0,
         'qa_new_answer': False,
         'qa_answer_play_token': 0,
+        'analysis_source_name': '',
+        'memo_autosaved_key': '',
+        'selected_memo_id': '',
+        'memo_play_token': 0,
         'selected_voice': 'JiYeong Kang',
         'voice_speed': 1.0,
     }
